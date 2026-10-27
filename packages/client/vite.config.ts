@@ -1,15 +1,23 @@
 import react from '@vitejs/plugin-react';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
+import { viteSingleFile } from 'vite-plugin-singlefile';
 
-const target = process.env.P3_SERVER ?? 'http://localhost:8080';
-
+/**
+ * `npm run build` produces one self-contained file, app/dist/platform3.html: JS, CSS, the engine worker
+ * (inlined as a blob) and multipliers.json are all embedded, so it runs from file:// with no network.
+ */
 export default defineConfig({
-  plugins: [react()],
-  server: {
-    port: 5173,
-    proxy: {
-      '/ws': { target, ws: true },
-      '/api': target,
-    },
+  base: './',
+  plugins: [react(), viteSingleFile({ removeViteModuleLoader: true })],
+  worker: { format: 'es' },
+  build: {
+    outDir: fileURLToPath(new URL('../../dist', import.meta.url)),
+    emptyOutDir: true,
+    target: 'es2022',
+    assetsInlineLimit: 100_000_000,
+    cssCodeSplit: false,
+    reportCompressedSize: false,
   },
+  server: { port: 5173 },
 });

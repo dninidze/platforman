@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { hashServerSeed, verifyRound, type FairnessRecord, type VerifyResult } from '@p3/shared';
-import type { GameState, Revealed } from './net';
+import { hashServerSeed, hashServerSeedWebCrypto, verifyRound, verifyRoundWebCrypto, type FairnessRecord, type VerifyResult } from '@p3/shared';
+import type { GameClient, GameState, Revealed } from './net';
 
 interface LoggedRound extends FairnessRecord {
   roundId: string;
@@ -23,10 +23,12 @@ interface Outcome {
 const prefixOk = (derived: number[][], observed: number[][]) =>
   observed.every((o, i) => o.every((t, j) => derived[i][j] === t));
 
-/** Recomputes the hash and all three sequences with the same shared library the server uses. */
-export function FairnessModal({ s, onClose }: { s: GameState; onClose: () => void }) {
-  const [rounds, setRounds] = useState<{ roundId: string }[]>([]);
-  const [pick, setPick] = useState('');
+/**
+ * Recomputes the hash and all three sequences offline with Web Crypto (crypto.subtle), an
+ * implementation independent of the engine's own derivation, and compares them with the round log.
+ */
+export function FairnessModal({ s, client, onClose }: { s: GameState; client: GameClient; onClose: () => void }) {
+  const [pick, setPick] = useState(() => s.revealed[0]?.roundId ?? s.history[0]?.roundId ?? '');
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -37,37 +39,30 @@ export function FairnessModal({ s, onClose }: { s: GameState; onClose: () => voi
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  useEffect(() => {
-    fetch(`/api/rounds?limit=30${s.watching ? `&roomId=${encodeURIComponent(s.watching)}` : ''}`)
-      .then((r) => r.json())
-      .then((rows: { roundId: string }[]) => {
-        setRounds(rows);
-        if (!pick && rows[0]) setPick(rows[0].roundId);
-      })
-      .catch(() => setRounds(s.revealed.map((r) => ({ roundId: r.roundId }))));
-  }, [s.watching]); // eslint-disable-line react-hooks/exhaustive-deps
-
   async function verify(roundId: string) {
     setBusy(true);
     setError(null);
     setOutcome(null);
     const local: Revealed | undefined = s.revealed.find((r) => r.roundId === roundId);
     try {
-      let rec: LoggedRound | null = null;
-      let source = 'server round log';
-      const res = await fetch(`/api/rounds/${encodeURIComponent(roundId)}`);
-      if (res.ok) rec = (await res.json()) as LoggedRound;
-      else if (local) {
+      let rec: LoggedRound | null = (await client.getRound(roundId)).record as LoggedRound | null;
+      let source = 'engine round log';
+      if (!rec && local) {
         rec = { ...local, roomId: local.roomId };
         source = 'roundEnd message';
       }
       if (!rec) throw new Error('Round not found in the log');
-      const result = verifyRound(rec);
+      // Web Crypto needs a secure context (https, localhost, or file:// in Chromium/Firefox). In an opaque
+      // origin it is missing; then fall back to the bundled SHA-256 (the engine's own implementation).
+      const webCrypto = !!globalThis.crypto?.subtle;
+      const result = webCrypto ? await verifyRoundWebCrypto(rec) : verifyRound(rec);
+      if (!webCrypto) source += ' · Web Crypto unavailable here, used bundled SHA-256';
+      else source += ' · Web Crypto';
       setOutcome({
         roundId,
         source,
         result,
-        seenHashOk: local ? local.hashSeen === hashServerSeed(rec.serverSeed) : null,
+        seenHashOk: local ? local.hashSeen === (webCrypto ? await hashServerSeedWebCrypto(rec.serverSeed) : hashServerSeed(rec.serverSeed)) : null,
         observedOk: local ? prefixOk(result.derived, local.observed) : null,
         serverSeed: rec.serverSeed,
         clientSeed: rec.clientSeed,
@@ -79,7 +74,7 @@ export function FairnessModal({ s, onClose }: { s: GameState; onClose: () => voi
     }
   }
 
-  const options = [...new Set([...s.revealed.map((r) => r.roundId), ...rounds.map((r) => r.roundId)])];
+  const options = [...new Set([...s.revealed.map((r) => r.roundId), ...s.history.map((r) => r.roundId)])];
 
   return (
     <div className="modal-bg" onClick={onClose}>
@@ -93,7 +88,7 @@ export function FairnessModal({ s, onClose }: { s: GameState; onClose: () => voi
         <p className="muted small">
           Before each round the server commits to <code>SHA256(serverSeed)</code>. The three tile orders come from
           HMAC-SHA256(serverSeed, clientSeed:stage:counter) with a Fisher–Yates shuffle. The seed is revealed when the round ends,
-          so you can recompute every removal.
+          so you can recompute every removal. This check runs offline in your browser with Web Crypto.
         </p>
         <div className="kv">
           <span>Current round</span>

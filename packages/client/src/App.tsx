@@ -1,11 +1,46 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { STAGE_REMOVALS, formatMoney, payout } from '@p3/shared';
+import EngineWorker from './engine.worker?worker&inline';
 import { FairnessModal } from './Fairness';
-import { GameClient, type GameState } from './net';
+import { GameClient, store, type GameState } from './net';
+import { SettingsPanel, StressOverlay } from './Stress';
+import { InProcessTransport, WebSocketTransport, WorkerTransport, type Transport } from './transport';
 
-const wsUrl = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
-const client = new GameClient(wsUrl);
+const params = new URLSearchParams(location.search);
+let engineOnMainThread = params.get('engine') === 'main' || typeof Worker === 'undefined';
+
+/**
+ * Default: the engine runs in an inlined Web Worker. If the worker cannot start, fall back to running
+ * it on the main thread. `?server=ws://host/ws` would talk to a real game server instead.
+ */
+function makeTransport(): Transport {
+  const server = params.get('server');
+  if (server) return new WebSocketTransport(server);
+  if (!engineOnMainThread) {
+    try {
+      return new WorkerTransport(
+        () => new EngineWorker(),
+        () => {
+          if (engineOnMainThread) return;
+          engineOnMainThread = true;
+          client.reconnect();
+        },
+      );
+    } catch {
+      engineOnMainThread = true;
+    }
+  }
+  return new InProcessTransport(import('@p3/engine').then((m) => new m.LocalHost()));
+}
+
+const client = new GameClient(makeTransport);
 client.connect();
+// Restore the page's saved settings once the engine is up.
+{
+  const bots = store.get('p3.bots');
+  const busy = store.get('p3.busy');
+  client.updateSettings({ ...(bots !== null ? { bots: Number(bots) } : {}), ...(busy !== null ? { busyServer: busy === '1' } : {}) });
+}
 // A hot reload re-runs this module; close the old client so it cannot rejoin under the same nickname.
 import.meta.hot?.dispose(() => client.close());
 
@@ -28,6 +63,8 @@ function useNow(ms = 100) {
 export function App() {
   const s = useGame();
   const [fairOpen, setFairOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [overlay, setOverlay] = useState(() => store.get('p3.overlay') === '1' || params.has('perf'));
 
   if (!s.joined) return <JoinScreen connected={s.connected} />;
   const sym = CURRENCY_SYMBOL[s.config?.currency ?? ''] ?? '';
@@ -50,9 +87,12 @@ export function App() {
         <button className="pf" onClick={() => setFairOpen(true)} title="Provably fair" aria-label="Provably fair: verify rounds">
           <span aria-hidden>🛡</span> <span className="pf-text">Fair</span>
         </button>
+        <button className="pf" onClick={() => setSettingsOpen(true)} title="Settings" aria-label="Settings">
+          <span aria-hidden>⚙</span> <span className="pf-text">Settings</span>
+        </button>
       </header>
 
-      {!s.connected && <div className="banner warn">Reconnecting…</div>}
+      {!s.connected && <div className="banner warn">Starting the game engine…</div>}
       {spectating && (
         <div className="banner">
           Spectating {s.watching}.{' '}
@@ -82,7 +122,9 @@ export function App() {
           </div>
         ))}
       </div>
-      {fairOpen && <FairnessModal s={s} onClose={() => setFairOpen(false)} />}
+      {fairOpen && <FairnessModal s={s} client={client} onClose={() => setFairOpen(false)} />}
+      {settingsOpen && <SettingsPanel s={s} client={client} overlay={overlay} setOverlay={setOverlay} onClose={() => setSettingsOpen(false)} />}
+      {overlay && <StressOverlay s={s} client={client} />}
     </div>
   );
 }

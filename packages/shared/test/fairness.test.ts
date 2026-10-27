@@ -115,3 +115,20 @@ describe('verifyRound', () => {
     expect(verifyRound({ ...base, played }).playedOk[0]).toBe(false);
   });
 });
+
+describe('Web Crypto verifier', () => {
+  it('matches the engine derivation (hash and all three sequences) for many seeds', async () => {
+    const { deriveSequencesWebCrypto, hashServerSeedWebCrypto, verifyRoundWebCrypto } = await import('../src/fairnessWebCrypto');
+    for (let r = 0; r < 200; r++) {
+      const seed = generateServerSeed();
+      const cs = `EUR-1#${r}:${r}`;
+      expect(await hashServerSeedWebCrypto(seed)).toBe(hashServerSeed(seed));
+      expect(await deriveSequencesWebCrypto(seed, cs)).toEqual(deriveSequences(seed, cs));
+    }
+    const seed = generateServerSeed();
+    const sequences = deriveSequences(seed, 'x:1');
+    const rec = { serverSeed: seed, serverSeedHash: hashServerSeed(seed), clientSeed: 'x:1', sequences, played: [sequences[0], [], []] };
+    expect((await verifyRoundWebCrypto(rec)).ok).toBe(true);
+    expect((await verifyRoundWebCrypto({ ...rec, clientSeed: 'x:2' })).ok).toBe(false);
+  });
+});

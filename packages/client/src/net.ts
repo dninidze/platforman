@@ -1,5 +1,9 @@
 import {
+  countsChecksum,
   decodeGoneMask,
+  type HostSettings,
+  type HostStatsMsg,
+  type RoundRecordMsg,
   type ClientMessage,
   type CountsDelta,
   type ErrorCode,
@@ -12,6 +16,26 @@ import {
   type Stage,
   type YouMsg,
 } from '@p3/shared';
+import type { Transport } from './transport';
+
+const store = {
+  get(key: string): string | null {
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  set(key: string, value: string): void {
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      /* storage blocked: the game still works, the balance just won't persist */
+    }
+  },
+};
+export { store };
+const balanceKey = (nick: string) => `p3.balance.${nick.toLowerCase()}`;
 
 /**
  * Client-side store. It only mirrors server state: no outcome is ever computed here.
@@ -76,6 +100,18 @@ export interface GameState {
   /** serverTime - Date.now() */
   offset: number;
   resyncs: number;
+  transport: string;
+  settings: HostSettings | null;
+  hostStats: HostStatsMsg | null;
+}
+
+/** UI-side sync and timing metrics (kept off the React state to avoid re-renders). */
+export interface ClientMetrics {
+  ticks: number;
+  rounds: number;
+  checksumMismatches: number;
+  /** Date.now() at receipt minus the tick's scheduled serverTime, for recent ticks. */
+  delivery: number[];
 }
 
 const REASON_TEXT: Partial<Record<ErrorCode, string>> = {
@@ -113,25 +149,26 @@ const initial: GameState = {
   toasts: [],
   offset: 0,
   resyncs: 0,
+  transport: '',
+  settings: null,
+  hostStats: null,
 };
 
 export class GameClient {
   state: GameState = initial;
-  private ws: WebSocket | null = null;
+  private transport: Transport | null = null;
+  readonly metrics: ClientMetrics = { ticks: 0, rounds: 0, checksumMismatches: 0, delivery: [] };
+  private pending = new Map<string, (m: ServerMessage) => void>();
   private listeners = new Set<() => void>();
   private lastSeq = 0;
   private awaitingSnapshot = false;
   private toastId = 0;
   private rid = 0;
-  private retry = 0;
   private wantNickname: string | null = null;
   private historyFor: string | null = null;
   private closed = false;
-  private roomPoll: ReturnType<typeof setInterval> | null = null;
 
-  constructor(private readonly url: string) {
-    this.pollRooms();
-  }
+  constructor(private readonly makeTransport: () => Transport) {}
 
   subscribe = (fn: () => void) => {
     this.listeners.add(fn);
@@ -147,48 +184,66 @@ export class GameClient {
   /** Stop for good (used when a dev hot-reload replaces this module). */
   close() {
     this.closed = true;
-    if (this.roomPoll) clearInterval(this.roomPoll);
-    this.ws?.close();
+    this.transport?.close();
+  }
+
+  /** Replace the transport (e.g. worker failed: fall back to the main thread) and rejoin. */
+  reconnect() {
+    this.transport?.close();
+    this.lastSeq = 0;
+    this.connect();
   }
 
   connect() {
     if (this.closed) return;
-    const ws = new WebSocket(this.url);
-    this.ws = ws;
-    ws.onopen = () => {
-      this.retry = 0;
-      this.set({ connected: true });
-      if (this.wantNickname) this.send({ t: 'join', nickname: this.wantNickname });
-    };
-    ws.onclose = () => {
-      this.set({ connected: false });
-      if (this.ws !== ws || this.closed) return;
-      const delay = Math.min(5_000, 500 * 2 ** this.retry++);
-      setTimeout(() => this.connect(), delay);
-    };
-    ws.onmessage = (ev) => this.onMessage(JSON.parse(ev.data as string) as ServerMessage);
+    const t = this.makeTransport();
+    this.transport = t;
+    this.set({ transport: t.kind });
+    t.onMessage((m) => this.onMessage(m));
+    t.onStatus((up) => {
+      this.set({ connected: up });
+      if (up && this.wantNickname) this.sendJoin(this.wantNickname);
+    });
   }
 
-  /** Room list (player counts) refreshes on a slow poll; it is not worth a push per join. */
-  private pollRooms() {
-    this.roomPoll = setInterval(async () => {
-      if (!this.state.joined) return;
-      try {
-        const rooms = (await (await fetch('/api/rooms')).json()) as RoomInfo[];
-        if (Array.isArray(rooms)) this.set({ rooms });
-      } catch {
-        /* ignore */
-      }
-    }, 5_000);
+  private sendJoin(nickname: string) {
+    const saved = Number(store.get(balanceKey(nickname)));
+    this.send({ t: 'join', nickname, ...(store.get(balanceKey(nickname)) !== null && Number.isInteger(saved) && saved >= 0 ? { balance: saved } : {}) });
   }
 
   join(nickname: string) {
     this.wantNickname = nickname;
-    if (this.state.connected) this.send({ t: 'join', nickname });
+    if (this.state.connected) this.sendJoin(nickname);
+  }
+
+  updateSettings(p: Partial<HostSettings>) {
+    this.send({ t: 'settings', ...p });
+  }
+  resetBalance() {
+    this.send({ t: 'resetBalance' });
+  }
+
+  /** Ask the engine for a logged round (fairness modal). */
+  getRound(roundId: string): Promise<RoundRecordMsg> {
+    return new Promise((resolve) => {
+      this.pending.set(`round:${roundId}`, (m) => resolve(m as RoundRecordMsg));
+      this.send({ t: 'getRound', roundId });
+    });
+  }
+  /** All logged rounds as JSONL (download button). */
+  getLog(): Promise<string> {
+    return new Promise((resolve) => {
+      this.pending.set('log', (m) => resolve(m.t === 'log' ? m.jsonl : ''));
+      this.send({ t: 'getLog' });
+    });
+  }
+
+  private persistBalance(balance: number) {
+    if (this.state.nickname) store.set(balanceKey(this.state.nickname), String(balance));
   }
 
   private send(msg: ClientMessage) {
-    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(msg));
+    this.transport?.send(msg);
   }
 
   bet(amount: number, tileId: number) {
@@ -215,15 +270,6 @@ export class GameClient {
 
   serverNow() {
     return Date.now() + this.state.offset;
-  }
-
-  private async loadHistory(roomId: string) {
-    try {
-      const rows = (await (await fetch(`/api/history?roomId=${encodeURIComponent(roomId)}`)).json()) as HistoryEntry[];
-      if (Array.isArray(rows) && this.state.watching === roomId) this.set({ history: rows.slice(0, 20) });
-    } catch {
-      /* history is optional */
-    }
   }
 
   /** Room broadcasts carry seq; a gap means we missed something, so ask for a full snapshot. */
@@ -259,18 +305,15 @@ export class GameClient {
           balance: m.balance,
           rooms: m.rooms,
         });
-        try {
-          localStorage.setItem('p3.nickname', m.nickname);
-        } catch {
-          /* storage may be unavailable */
-        }
+        store.set('p3.nickname', m.nickname);
+        this.persistBalance(m.balance);
         return;
       case 'rooms':
         this.set({ rooms: m.rooms, homeRoom: m.home, watching: m.watching });
         if (m.watching && m.watching !== this.historyFor) {
           this.historyFor = m.watching;
           this.set({ history: [] });
-          void this.loadHistory(m.watching);
+          this.send({ t: 'getHistory' });
         }
         return;
       case 'roundState': {
@@ -306,6 +349,15 @@ export class GameClient {
         const gone = r.stage === m.stage ? r.gone.slice() : new Array<boolean>(100).fill(false);
         gone[m.tileGone] = true;
         const played = r.played.map((p, i) => (i === m.stage - 1 ? [...p, m.tileGone] : p));
+        const counts = this.applyDelta(r.counts, m.countsDelta);
+        this.metrics.ticks++;
+        this.metrics.delivery.push(Date.now() - m.serverTime);
+        if (this.metrics.delivery.length > 2_000) this.metrics.delivery.splice(0, 1_000);
+        if (countsChecksum(counts) !== m.checksum) {
+          this.metrics.checksumMismatches++;
+          this.awaitingSnapshot = true;
+          this.send({ t: 'resync' });
+        }
         const mine = s.you && s.you.roundId === m.roundId && s.you.state === 'alive' && s.you.tileId === m.tileGone;
         this.set({
           offset: m.serverTime - Date.now(),
@@ -316,7 +368,7 @@ export class GameClient {
             removed: m.removedCount,
             multiplier: m.multiplier,
             nextMultiplier: m.nextMultiplier,
-            counts: this.applyDelta(r.counts, m.countsDelta),
+            counts,
             gone,
             played,
             fast: m.fast,
@@ -346,6 +398,7 @@ export class GameClient {
         return;
       case 'roundEnd': {
         if (!this.checkSeq(m.seq) || !s.round) return;
+        this.metrics.rounds++;
         const entry: HistoryEntry = {
           roundId: m.roundId,
           jackpotTile: m.jackpotTile,
@@ -367,6 +420,7 @@ export class GameClient {
       case 'you': {
         const prev = s.you;
         this.set({ you: m, balance: m.balance });
+        this.persistBalance(m.balance);
         if (m.maxWin && prev?.state !== 'cashedOut') this.toast('Max win reached', 'win');
         if (m.state === 'cashedOut' && prev?.state === 'alive' && !m.maxWin && m.multiplier && m.multiplier >= 10_000) {
           this.toast('10,000x!', 'win');
@@ -392,6 +446,28 @@ export class GameClient {
         this.toast(m.message || reasonText(m.code));
         return;
       case 'pong':
+        return;
+      case 'history':
+        if (m.roomId === s.watching) this.set({ history: m.rounds.slice(0, 20) });
+        return;
+      case 'roundRecord':
+        this.pending.get(`round:${m.roundId}`)?.(m);
+        this.pending.delete(`round:${m.roundId}`);
+        return;
+      case 'log':
+        this.pending.get('log')?.(m);
+        this.pending.delete('log');
+        return;
+      case 'balance':
+        this.set({ balance: m.balance, you: s.you ? { ...s.you, balance: m.balance } : s.you });
+        this.persistBalance(m.balance);
+        this.toast('Balance reset', 'info');
+        return;
+      case 'settings':
+        this.set({ settings: { bots: m.bots, busyServer: m.busyServer, roomSoftCap: m.roomSoftCap } });
+        return;
+      case 'hostStats':
+        this.set({ hostStats: m, rooms: m.rooms });
         return;
     }
   }
