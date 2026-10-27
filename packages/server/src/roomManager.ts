@@ -52,7 +52,9 @@ export class RoomManager {
   leave(playerId: string): void {
     const room = this.roomOf(playerId);
     room?.removeMember(playerId);
-    this.homeOf.delete(playerId);
+    // A live bet keeps the player's home room, so reconnecting lands them back on their tile.
+    const p = room?.core.players.get(playerId);
+    if (!p || (p.state !== 'alive' && p.state !== 'betting')) this.homeOf.delete(playerId);
   }
 
   roomOf(playerId: string): Room | undefined {
