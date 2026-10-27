@@ -190,7 +190,7 @@ dist/             platform3.html (committed); data/ holds local run outputs (git
 | 5 | Fast finish at 5/s in precommitted order, then ENDED | `room.test.ts` "fast finish" (4 cases) |
 | 6 | `MOVE_LOCKED`, `TOO_LATE`, no double pay | `room.test.ts`, `wallet.test.ts` (idempotency, retries with same txId) |
 | 7 | Verifier matches every sequence for any logged round | Fairness modal (Web Crypto), `host.test.ts` (`checkRecord` on every logged round), `npm run verify` |
-| 8 | `npm run sim` passes | 1M rounds in 33 s, 282 strategies (every cash-out point, random walk with moves, ride to 10,000x), worst |z| 3.09, none beyond 4σ |\|z\| below 4 (numbers in the session report) |
+| 8 | `npm run sim` passes | 1M rounds in 33 s, 282 strategies (every cash-out point, random walk with moves, ride to 10,000x), worst |z| 3.09, none beyond 4σ |
 | 9 | In-page stress result recorded | `LOADTEST.md` |
 | 10 | New room past `roomSoftCap` | `roomManager.test.ts`, `host.test.ts` "simulate busy server" |
 | 11 | `npm test` green | 67 tests in 7 files |
