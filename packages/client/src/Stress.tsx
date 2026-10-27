@@ -103,6 +103,7 @@ const q = (xs: number[], p: number) => {
 };
 
 export interface StressResult {
+  engine: string;
   bots: number;
   rounds: number;
   seconds: number;
@@ -192,6 +193,7 @@ export function StressOverlay({ s, client }: { s: GameState; client: GameClient 
     setRecording(false);
     const delivery = client.metrics.delivery.slice();
     const res: StressResult = {
+      engine: s.transport,
       bots: s.hostStats?.bots ?? 0,
       rounds: client.metrics.rounds - r.rounds0,
       seconds: (performance.now() - r.start) / 1000,

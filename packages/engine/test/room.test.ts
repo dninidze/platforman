@@ -1,4 +1,4 @@
-import { MULTIPLIERS_100, verifyRound } from '@p3/shared';
+import { MULTIPLIERS_100, countsChecksum, verifyRound } from '@p3/shared';
 import { describe, expect, it } from 'vitest';
 import { flush, setupRoom } from './helpers';
 
@@ -213,6 +213,26 @@ describe('limits & capacity', () => {
     expect(whale).toMatchObject({ state: 'cashedOut', payout: 1_000_000, maxWin: true });
     expect(h.room.core.players.get('small')!.state).toBe('alive');
     expect(h.room.phase).toBe('intermission');
+    // The forced cashout's tile change is in that tick's delta, so a replaying client stays in sync.
+    let counts: number[] = [];
+    for (const m of h.broadcasts) {
+      if (m.t === 'roundState') counts = [...m.tiles];
+      if (m.t === 'occupancy' || m.t === 'tick') for (let i = 0; i < m.countsDelta.length; i += 2) counts[m.countsDelta[i]] = m.countsDelta[i + 1];
+      if (m.t === 'tick') expect(countsChecksum(counts), `tick ${m.stage}/${m.removedCount}`).toBe(m.checksum);
+    }
+  });
+
+  it('stage-3 survivors leave their tile in the final tick delta', async () => {
+    const h = setupRoom();
+    h.join('rider');
+    await h.room.bet('rider', 10, h.safeTile(1));
+    h.clock.advanceTo(BET_END + 91 * 500 + 1000);
+    h.room.move('rider', h.safeTile(2));
+    h.clock.advance(2000 + 90 * 500 + 1000);
+    h.room.move('rider', h.safeTile(3));
+    h.clock.advance(2000 + 99 * 500);
+    const last = h.of('tick').at(-1)!;
+    expect(last.countsDelta).toEqual(expect.arrayContaining([h.safeTile(3), 0]));
   });
 });
 

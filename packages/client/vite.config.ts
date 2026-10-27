@@ -10,7 +10,8 @@ import { viteSingleFile } from 'vite-plugin-singlefile';
 export default defineConfig({
   base: './',
   plugins: [react(), viteSingleFile({ removeViteModuleLoader: true })],
-  worker: { format: 'es' },
+  // Classic (IIFE) worker: Chromium refuses inlined *module* workers from file:// pages.
+  worker: { format: 'iife' },
   build: {
     outDir: fileURLToPath(new URL('../../dist', import.meta.url)),
     emptyOutDir: true,

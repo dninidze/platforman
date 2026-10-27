@@ -232,6 +232,9 @@ export class Room {
     const r = core.tick();
     this.ticks.push([r.stage, r.k, r.tile, at]);
     this.dirty.add(r.tile);
+    // Players force-cashed at the cap or paid as stage-3 survivors left their tiles on this tick too.
+    for (const p of r.forced) this.dirty.add(p.tile);
+    for (const p of r.survivors) this.dirty.add(p.tile);
     this.broadcast({
       t: 'tick',
       seq: 0,

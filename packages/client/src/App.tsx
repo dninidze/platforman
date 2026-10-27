@@ -35,6 +35,8 @@ function makeTransport(): Transport {
 
 const client = new GameClient(makeTransport);
 client.connect();
+// For the headless checks: which side of which boundary the engine runs on.
+(window as unknown as { __p3engine: () => string }).__p3engine = () => client.state.transport;
 // Restore the page's saved settings once the engine is up.
 {
   const bots = store.get('p3.bots');

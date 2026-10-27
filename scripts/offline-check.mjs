@@ -107,7 +107,8 @@ await evaluate(`(() => {
 await sleep(100);
 await evaluate(`document.querySelector('.join-card button').click(), true`);
 await waitFor(`!!document.querySelector('.board .tile')`, 10_000, 'board');
-log('joined');
+const engine = await evaluate('window.__p3engine()');
+log(`joined; engine runs in: ${engine}`);
 // Wait for a fresh betting phase with at least 4 s left.
 await waitFor(`(() => { const l = document.querySelector('.phase-label')?.textContent || ''; const m = l.match(/Betting closes in ([\\d.]+)s/); return m && Number(m[1]) > 4; })()`, 240_000, 'betting phase');
 const roundId = await evaluate(`document.querySelectorAll('.stat-value')[2].textContent`);
@@ -140,10 +141,10 @@ const verdict = await evaluate(`({ verdict: document.querySelector('.verdict').t
 log(`verifier: ${JSON.stringify(verdict)}`);
 
 const external = requests.filter((u) => !/^(file|data|blob):/.test(u));
-const report = { url, browser: browserPath, env, roundId, outcome, end, verdict, requests: requests.length, externalRequests: external, consoleErrors, seconds: (Date.now() - t0) / 1000 };
+const report = { url, browser: browserPath, env, engine, roundId, outcome, end, verdict, requests: requests.length, externalRequests: external, consoleErrors, seconds: (Date.now() - t0) / 1000 };
 writeFileSync(resolve(appRoot, 'data/offline-check.json'), JSON.stringify(report, null, 2));
-const ok = verdict.verdict.includes('Verified') && external.length === 0 && consoleErrors.length === 0;
-console.log(ok ? 'PASS: full round played from disk with networking disabled' : `FAIL: ${JSON.stringify({ external, consoleErrors })}`);
+const ok = engine === 'web worker' && verdict.verdict.includes('Verified') && external.length === 0 && consoleErrors.length === 0;
+console.log(ok ? 'PASS: full round played from disk with networking disabled' : `FAIL: ${JSON.stringify({ engine, external, consoleErrors })}`);
 ws.close();
 browser.kill();
 process.exit(ok ? 0 : 1);
