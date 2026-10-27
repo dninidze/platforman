@@ -8,6 +8,7 @@ import {
   jackpotTile,
   payout,
   STAGE_REMOVALS,
+  countsChecksum,
   type BroadcastMessage,
   type ClientSeedProvider,
   type Clock,
@@ -243,6 +244,7 @@ export class Room {
       countsDelta: this.takeDelta(),
       fast: this.fast,
       serverTime: at,
+      checksum: countsChecksum(core.counts),
     });
     for (const p of r.losers) this.resolveAudit(p, at);
     for (const p of r.losers) this.sendYou(p.id);

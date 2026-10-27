@@ -1,9 +1,0 @@
-{
-  "name": "@p3/bots",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "scripts": { "bots": "tsx bots.ts" },
-  "dependencies": { "@p3/shared": "*", "ws": "^8.18.0" },
-  "devDependencies": { "@types/ws": "^8.5.13" }
-}

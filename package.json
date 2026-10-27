@@ -5,23 +5,21 @@
   "type": "module",
   "workspaces": [
     "packages/shared",
-    "packages/server",
+    "packages/engine",
     "packages/client",
-    "tools/sim",
-    "tools/bots"
+    "tools/sim"
   ],
   "scripts": {
-    "dev": "concurrently -k -n server,client -c blue,green \"npm:dev -w @p3/server\" \"npm:dev -w @p3/client\"",
-    "start": "npm run build -w @p3/client && npm run start -w @p3/server",
+    "dev": "npm run dev -w @p3/client",
+    "build": "npm run build -w @p3/client",
+    "preview": "npm run preview -w @p3/client",
     "test": "vitest run",
-    "typecheck": "tsc -p packages/shared && tsc -p packages/server && tsc -p packages/client && tsc -p tools/sim && tsc -p tools/bots",
+    "typecheck": "tsc -p packages/shared && tsc -p packages/engine && tsc -p packages/client && tsc -p tools/sim",
     "sim": "npm run sim -w @p3/sim --",
-    "bots": "npm run bots -w @p3/bots --",
-    "verify": "tsx packages/server/src/verifyLog.ts"
+    "verify": "tsx packages/engine/src/verifyLog.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
-    "concurrently": "^9.1.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"

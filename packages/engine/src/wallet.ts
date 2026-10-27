@@ -17,7 +17,7 @@ export interface LedgerEntry {
   txId: string;
   playerId: string;
   roundId: string;
-  kind: 'debit' | 'credit' | 'rollback';
+  kind: 'debit' | 'credit' | 'rollback' | 'adjust';
   amount: Money;
   balanceAfter: Money;
 }
@@ -42,6 +42,19 @@ export class MockWallet implements Wallet {
       this.balances.set(playerId, b);
     }
     return b;
+  }
+
+  /** Whether this player already has a balance (used before seeding a persisted balance). */
+  has(playerId: string): boolean {
+    return this.balances.has(playerId);
+  }
+
+  /** Set a play-money balance directly (persisted balance on page load, "Reset balance"). */
+  setBalance(playerId: string, amount: Money): void {
+    if (!Number.isInteger(amount) || amount < 0) throw new Error('balance must be a non-negative integer');
+    const before = this.bal(playerId);
+    this.balances.set(playerId, amount);
+    this.ledger.push({ txId: `set:${playerId}:${this.ledger.length}`, playerId, roundId: '', kind: 'adjust', amount: amount - before, balanceAfter: amount });
   }
 
   /** Synchronous peek used for snapshots; the async interface is the contract. */
