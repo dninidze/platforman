@@ -319,7 +319,7 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
   });
 
   return new Promise((resolve) => {
-    httpServer.listen(config.port, () => {
+    httpServer.listen({ port: config.port, backlog: 4096 }, () => {
       const addr = httpServer.address();
       const port = typeof addr === 'object' && addr ? addr.port : config.port;
       resolve({

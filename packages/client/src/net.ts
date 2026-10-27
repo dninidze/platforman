@@ -126,6 +126,8 @@ export class GameClient {
   private retry = 0;
   private wantNickname: string | null = null;
   private historyFor: string | null = null;
+  private closed = false;
+  private roomPoll: ReturnType<typeof setInterval> | null = null;
 
   constructor(private readonly url: string) {
     this.pollRooms();
@@ -142,7 +144,15 @@ export class GameClient {
     for (const l of this.listeners) l();
   }
 
+  /** Stop for good (used when a dev hot-reload replaces this module). */
+  close() {
+    this.closed = true;
+    if (this.roomPoll) clearInterval(this.roomPoll);
+    this.ws?.close();
+  }
+
   connect() {
+    if (this.closed) return;
     const ws = new WebSocket(this.url);
     this.ws = ws;
     ws.onopen = () => {
@@ -152,7 +162,7 @@ export class GameClient {
     };
     ws.onclose = () => {
       this.set({ connected: false });
-      if (this.ws !== ws) return;
+      if (this.ws !== ws || this.closed) return;
       const delay = Math.min(5_000, 500 * 2 ** this.retry++);
       setTimeout(() => this.connect(), delay);
     };
@@ -161,7 +171,7 @@ export class GameClient {
 
   /** Room list (player counts) refreshes on a slow poll; it is not worth a push per join. */
   private pollRooms() {
-    setInterval(async () => {
+    this.roomPoll = setInterval(async () => {
       if (!this.state.joined) return;
       try {
         const rooms = (await (await fetch('/api/rooms')).json()) as RoomInfo[];

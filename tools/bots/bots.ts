@@ -27,6 +27,7 @@ interface WorkerStats {
   errors: string[];
   connected: number;
   closedUnexpectedly: number;
+  connectRetries: number;
   roundEnds: string[];
   bets: number;
   cashouts: number;
@@ -42,6 +43,7 @@ const emptyStats = (): WorkerStats => ({
   errors: [],
   connected: 0,
   closedUnexpectedly: 0,
+  connectRetries: 0,
   roundEnds: [],
   bets: 0,
   cashouts: 0,
@@ -210,8 +212,9 @@ function runWorker() {
     }
   };
 
-  const open = (i: number) => {
+  const open = (i: number, attempt = 0) => {
     const ws = new WebSocket(url, { perMessageDeflate: false });
+    let opened = false;
     const b: Bot = {
       i,
       ws,
@@ -234,6 +237,7 @@ function runWorker() {
     };
     bots.push(b);
     ws.on('open', () => {
+      opened = true;
       stats.connected++;
       ws.send(JSON.stringify({ t: 'join', nickname: `bot${i}` }));
     });
@@ -244,9 +248,20 @@ function runWorker() {
         stats.errors.push(`client parse: ${String(e)}`);
       }
     });
-    ws.on('error', (e) => stats.errors.push(`ws error: ${e.message}`));
+    ws.on('error', (e) => {
+      // A refused connect during the ramp (listen backlog full) is retried like a real client would.
+      if (!opened && attempt < 10 && !stopping) return;
+      stats.errors.push(`ws error: ${e.message}`);
+    });
     ws.on('close', () => {
-      if (!stopping) stats.closedUnexpectedly++;
+      if (stopping) return;
+      if (!opened && attempt < 10) {
+        bots.splice(bots.indexOf(b), 1);
+        stats.connectRetries++;
+        setTimeout(() => open(i, attempt + 1), 200 * 2 ** attempt + Math.random() * 200);
+        return;
+      }
+      stats.closedUnexpectedly++;
     });
   };
 
@@ -322,7 +337,7 @@ async function main() {
   const players = Number(arg('players', '9900'));
   const rounds = Number(arg('rounds', '20'));
   const workersN = Math.max(1, Math.min(Number(arg('workers', String(Math.min(8, availableParallelism() - 2)))), players));
-  const rampPerSec = Number(arg('ramp', '600'));
+  const rampPerSec = Number(arg('ramp', '400'));
   const bettingMs = Number(arg('betting-ms', '10000'));
   const tickMs = arg('tick-ms', '');
   const moveProb = Number(arg('move-prob', '0.03'));
@@ -360,6 +375,7 @@ async function main() {
       totals.roundEnds.push(...s.roundEnds);
       totals.errors.push(...s.errors);
       totals.closedUnexpectedly += s.closedUnexpectedly;
+      totals.connectRetries += s.connectRetries;
       if (!measuring) return;
       for (const [k, v] of Object.entries(s.latencies)) (totals.latencies[k] ??= []).push(...v);
       for (const [k, v] of Object.entries(s.rejects)) totals.rejects[k] = (totals.rejects[k] ?? 0) + v;
@@ -386,9 +402,20 @@ async function main() {
 
   // Wait for all bots to connect, then measure the next `rounds` full rounds.
   const connected = () => [...connectedBy.values()].reduce((a, b) => a + b, 0);
+  const rampLimitMs = 60_000 + (players / rampPerSec) * 3_000;
+  let lastProgress = 0;
   while (connected() < players) {
     await new Promise((r) => setTimeout(r, 500));
-    if (Date.now() - t0 > 180_000) throw new Error(`only ${connected()} of ${players} bots connected`);
+    if (Date.now() - lastProgress > 5_000) {
+      lastProgress = Date.now();
+      const m = metrics.at(-1);
+      console.log(`  ramp: ${connected()} bots open, server sockets ${m?.sockets ?? '?'}, rss ${m ? (m.mem.rss / 2 ** 20).toFixed(0) : '?'} MB`);
+    }
+    if (Date.now() - t0 > rampLimitMs) {
+      server?.kill();
+      for (const e of [...new Set(totals.errors)].slice(0, 10)) console.log(`  ! ${e}`);
+      throw new Error(`only ${connected()} of ${players} bots connected`);
+    }
   }
   const rampSecs = (Date.now() - t0) / 1000;
   const skip = new Set(totals.roundEnds);
@@ -457,6 +484,7 @@ async function main() {
     rejected: totals.rejects,
     clientResyncs: totals.resyncs,
     unexpectedCloses: totals.closedUnexpectedly,
+    connectRetriesDuringRamp: totals.connectRetries,
     errors: totals.errors.slice(0, 20),
     errorCount: totals.errors.length,
   };
@@ -472,10 +500,10 @@ async function main() {
   console.log(`per client: ${f(report.perClient.bytesPerSec)} B/s, ${report.perClient.msgsPerSec.toFixed(2)} msgs/s`);
   console.log(`actions: ${totals.bets} bets, ${totals.moves} moves, ${totals.cashouts} cashouts`);
   console.log(`rejected: ${JSON.stringify(totals.rejects)}`);
-  console.log(`client resyncs ${totals.resyncs}, unexpected closes ${totals.closedUnexpectedly}, errors ${totals.errors.length}`);
+  console.log(`client resyncs ${totals.resyncs}, unexpected closes ${totals.closedUnexpectedly}, connect retries (ramp) ${totals.connectRetries}, errors ${totals.errors.length}`);
   for (const e of report.errors) console.log(`  ! ${e}`);
 
-  const json = arg('json', resolve(APP_ROOT, `data/loadtest-${players}.json`));
+  const json = resolve(process.env.INIT_CWD ?? process.cwd(), arg('json', resolve(APP_ROOT, `data/loadtest-${players}.json`)));
   writeFileSync(json, JSON.stringify(report, null, 2));
   console.log(`wrote ${json}`);
 

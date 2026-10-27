@@ -6,6 +6,8 @@ import { GameClient, type GameState } from './net';
 const wsUrl = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
 const client = new GameClient(wsUrl);
 client.connect();
+// A hot reload re-runs this module; close the old client so it cannot rejoin under the same nickname.
+import.meta.hot?.dispose(() => client.close());
 
 const CURRENCY_SYMBOL: Record<string, string> = { EUR: '€', USD: '$', GBP: '£' };
 
@@ -132,10 +134,13 @@ function MultiplierBar({ s }: { s: GameState }) {
   const now = useNow();
   const r = s.round;
   if (!r) return <div className="mbar" />;
-  const left = 100 - r.removed;
-  const stageLen = STAGE_REMOVALS[r.stage - 1];
-  const stageOver = r.removed >= stageLen;
-  const survive = !stageOver && left > 0 ? (left - 1) / left : null;
+  const resurrected = r.phase === 'intermission';
+  const stageLen = STAGE_REMOVALS[resurrected ? r.stage : r.stage - 1];
+  const removed = resurrected ? 0 : r.removed;
+  const left = 100 - removed;
+  const stageOver = !resurrected && removed >= stageLen;
+  const survive = !stageOver && r.phase !== 'ended' ? (left - 1) / left : null;
+  const inPlay = s.you?.roundId === r.roundId && (s.you.state === 'alive' || s.you.state === 'betting');
   const secs = r.phaseEndsAt ? Math.max(0, (r.phaseEndsAt - now) / 1000) : null;
   const phaseLabel =
     r.phase === 'betting'
@@ -167,10 +172,10 @@ function MultiplierBar({ s }: { s: GameState }) {
             Next: <b>{r.nextMultiplier !== null ? `${r.nextMultiplier.toFixed(2)}x` : '–'}</b>
           </div>
           <div>
-            Tiles left: <b>{left}</b> <span className="muted">({r.removed}/{stageLen} gone)</span>
+            Tiles left: <b>{left}</b> <span className="muted">({removed}/{stageLen} gone)</span>
           </div>
           <div>
-            Your tile survives next: <b>{survive !== null ? `${(survive * 100).toFixed(1)}%` : '–'}</b>
+            {inPlay ? 'Your tile' : 'A tile'} survives next: <b>{survive !== null ? `${(survive * 100).toFixed(1)}%` : '–'}</b>
           </div>
         </div>
       </div>
