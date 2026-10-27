@@ -1,0 +1,8 @@
+{
+  "name": "@p3/sim",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "sim": "tsx sim.ts" },
+  "dependencies": { "@p3/shared": "*" }
+}

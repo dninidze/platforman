@@ -1,0 +1,29 @@
+{
+  "name": "platform3",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "packages/shared",
+    "packages/server",
+    "packages/client",
+    "tools/sim",
+    "tools/bots"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n server,client -c blue,green \"npm:dev -w @p3/server\" \"npm:dev -w @p3/client\"",
+    "start": "npm run build -w @p3/client && npm run start -w @p3/server",
+    "test": "vitest run",
+    "typecheck": "tsc -p packages/shared && tsc -p packages/server && tsc -p packages/client && tsc -p tools/sim && tsc -p tools/bots",
+    "sim": "npm run sim -w @p3/sim --",
+    "bots": "npm run bots -w @p3/bots --",
+    "verify": "tsx packages/server/src/verifyLog.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "concurrently": "^9.1.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
