@@ -1,6 +1,7 @@
 node_modules/
-dist/*
-!dist/platform3.html
+/packages/*/dist/
+/dist/*
+!/dist/platform3.html
 data/*
 !data/.gitkeep
 *.log
