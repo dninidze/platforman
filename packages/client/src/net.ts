@@ -335,7 +335,13 @@ export class GameClient {
         if (!this.checkSeq(m.seq) || !s.round) return;
         this.set({
           offset: m.serverTime - Date.now(),
-          round: { ...s.round, phase: 'intermission', phaseEndsAt: m.phaseEndsAt, gone: new Array<boolean>(100).fill(false) },
+          round: {
+            ...s.round,
+            phase: 'intermission',
+            phaseEndsAt: m.phaseEndsAt,
+            nextMultiplier: m.nextMultiplier,
+            gone: new Array<boolean>(100).fill(false),
+          },
         });
         return;
       case 'roundEnd': {

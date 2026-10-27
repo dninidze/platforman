@@ -113,6 +113,8 @@ export interface StageEndMsg {
   roundId: string;
   stage: Stage;
   multiplier: number;
+  /** First multiplier of the next stage. */
+  nextMultiplier: number | null;
   phaseEndsAt: number | null;
   serverTime: number;
 }

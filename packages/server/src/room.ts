@@ -262,6 +262,7 @@ export class Room {
           roundId: this.roundId,
           stage: r.stage,
           multiplier: r.multiplier100 / 100,
+          nextMultiplier: nextOrNull(core.nextMultiplier100),
           phaseEndsAt: this.phaseEndsAt,
           serverTime: at,
         });

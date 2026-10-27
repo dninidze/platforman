@@ -83,6 +83,8 @@ export class RoundCore {
   }
 
   get nextMultiplier100(): number | null {
+    // In intermission the next removal is the first one of the next stage.
+    if (this.phase === 'intermission') return getNextMultiplier100((this.stage + 1) as Stage, 0);
     return getNextMultiplier100(this.stage, this.removed);
   }
 

@@ -25,7 +25,7 @@ describe('round timeline (fake clock)', () => {
     expect(ticks.map((t) => t.serverTime)).toEqual(ticks.map((_, i) => BET_END + (i + 1) * 500));
     expect(ticks.map((t) => Math.round(t.multiplier * 100))).toEqual(MULTIPLIERS_100[0]);
     expect(h.room.phase).toBe('intermission');
-    expect(h.of('stageEnd')).toEqual([expect.objectContaining({ stage: 1, multiplier: 10.77, phaseEndsAt: BET_END + 91 * 500 + 3000 })]);
+    expect(h.of('stageEnd')).toEqual([expect.objectContaining({ stage: 1, multiplier: 10.77, nextMultiplier: 10.87, phaseEndsAt: BET_END + 91 * 500 + 3000 })]);
 
     h.clock.advanceTo(BET_END + 91 * 500 + 3000);
     expect(h.room.phase).toBe('running');
