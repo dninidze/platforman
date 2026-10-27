@@ -1,14 +1,33 @@
 # Platform 3 – MVP
 
-A server-authoritative multiplayer crash game. 100 tiles (10×10). Players bet on a tile, tiles go
-**Gone** one by one every 0.5 s in a precommitted, provably fair order, and the multiplier climbs after
-every removal. There are three platforms (stages): the board is resurrected after 91 and then 90 removals,
-and anyone still standing on the last tile of stage 3 is paid 10,000x. Play money only.
+A multiplayer crash game. 100 tiles (10×10). Players bet on a tile, tiles go **Gone** one by one every
+0.5 s in a precommitted, provably fair order, and the multiplier climbs after every removal. There are
+three platforms (stages): the board is resurrected after 91 and then 90 removals, and anyone still standing
+on the last tile of stage 3 is paid 10,000x. Play money only.
 
-Built from `../spec/BUILD_SPEC.md` and `../spec/multipliers.json` (copied verbatim into
-`packages/shared/src/multipliers.json`; a unit test asserts they stay identical).
+Built from `../spec/BUILD_SPEC.md` (including **§0: one self-contained HTML file**) and
+`../spec/multipliers.json` (copied verbatim into `packages/shared/src/multipliers.json`; a unit test asserts
+they stay identical).
 
-## Run it
+## The deliverable
+
+**`dist/platform3.html`** (about 280 KB): open it by double-click. Everything is inlined: React UI, CSS,
+the game engine (as an inlined Web Worker) and the multiplier table. It makes no network requests and
+works with networking disabled (checked with `npm run check:offline`, below).
+
+1. Enter a nickname. New nicknames get €1,000 of play money; the balance is kept in `localStorage` (if
+   the browser allows it) and can be reset in **Settings**.
+2. During betting, tap a tile, set an amount and press **Bet**. Tap another tile to move.
+3. While tiles go, press **Cash out** before your tile goes Gone, or ride all three platforms.
+4. **Settings**: number of simulated players (0–9,900, default 300), "simulate busy server" (shards bots
+   into extra rooms past `roomSoftCap`), performance overlay with the stress test, reset balance, download
+   the round log (JSONL).
+5. **Fair**: verify any finished round offline with Web Crypto.
+
+URL options: `?perf` opens the performance overlay; `?engine=main` runs the engine on the main thread
+instead of a worker; `?server=ws://host/ws` would use a real WebSocket game server (not part of the MVP).
+
+## Build and run
 
 Requires Node 20+ (developed on Node 24) and npm 10+.
 
@@ -17,71 +36,67 @@ npm install
 ```
 
 ```bash
-npm run dev
+npm run build
 ```
-
-`npm run dev` starts the game server on <http://localhost:8080> (WebSocket at `/ws`) and the Vite client
-on <http://localhost:5173>, which proxies `/ws` and `/api` to the server. Open two tabs, pick two
-nicknames, and you are in the same room.
 
 | Command | What it does |
 | --- | --- |
-| `npm run dev` | Server (tsx watch) + client (Vite) together |
-| `npm start` | Builds the client and serves it from the game server on :8080 |
-| `npm test` | Vitest: shared engine, fairness, limits, capacity, fast finish, room manager, wallet, gateway |
+| `npm run build` | Builds `dist/platform3.html` (Vite + `vite-plugin-singlefile`) and fails if any external `src`/`href` remains or the file exceeds 2 MB |
+| `npm run dev` | Vite dev server on <http://localhost:5173> (same app, engine in a worker) |
+| `npm test` | Vitest: shared engine, fairness (incl. Web Crypto parity), limits, capacity, fast finish, room manager, wallet, in-page host and bots |
 | `npm run typecheck` | `tsc` (strict) over every package |
-| `npm run sim` | Monte Carlo RTP check, 1M rounds by default (`-- --rounds N --seed hex --verbose --csv file`) |
-| `npm run bots -- --players 9900` | Load test: spawns a server with `ROOM_SOFT_CAP=9900` and 9,900 bots in one room for 20 rounds |
-| `npm run verify` | Re-verifies every round in `data/rounds.jsonl` (seed hash, 3 sequences, tick log, payouts) |
-
-### Configuration
-
-All values from spec §12 live in `packages/shared/src/constants.ts` and can be overridden with env vars
-(`tickMs` → `TICK_MS`, `roomSoftCap` → `ROOM_SOFT_CAP`, …). Money env vars are in major units
-(`MIN_BET=0.10`, `MAX_BET=100`, `MAX_WIN_PER_BET=10000`); internally all money is integer cents.
-Extra server settings: `PORT` (8080), `DATA_DIR` (`data`), `OCCUPANCY_MS` (100), `LIVE_FEED_MS` (500),
-`STARTING_BALANCE` (1000), `MOVES_PER_SECOND` (5), `EMPTY_ROUNDS_BEFORE_CLOSE` (3).
-
-Example: a slower betting phase for manual testing:
-
-```bash
-BETTING_MS=30000 npm run dev
-```
+| `npm run sim` | Monte Carlo RTP check in Node, 1M rounds by default (`-- --rounds N --seed hex --verbose --csv file`) |
+| `npm run check:offline` | Opens `dist/platform3.html` from disk in headless Chrome/Edge with networking disabled, plays a full round through the UI, runs the verifier, and reports any network request |
+| `npm run check:stress` | Same harness: 9,900 bots for N rounds via the in-page stress recorder (`-- 5 --headed`) |
+| `npm run verify -- file.jsonl` | Re-verifies every round in a downloaded round log (seed hash, 3 sequences, tick log, payouts) |
 
 ## Layout
 
 ```
-packages/shared   constants, multiplier table + math, provably-fair derivation, RoundCore (pure engine),
-                  protocol types, Clock (real + fake)
-packages/server   Room (timeline, wallet, broadcasts), RoomManager, MockWallet, audit log, ws gateway, verifier
-packages/client   Vite + React UI (plain DOM grid)
-tools/sim         Monte Carlo RTP simulator (worker threads, real RoundCore + real seeds)
-tools/bots        WebSocket load test (worker threads)
-data/             rounds.jsonl, rejections.jsonl, server.log, sim/load-test outputs (gitignored)
+packages/shared   constants, multiplier table + math, provably-fair derivation (noble, sync) and an
+                  independent Web Crypto version, RoundCore (pure engine), protocol types, Clock (real + fake)
+packages/engine   Room (timeline, wallet, broadcasts), RoomManager (sharding), MockWallet, audit log,
+                  BotDriver (simulated players), LocalHost (the in-page "server" speaking the §8 protocol)
+packages/client   React UI, transports (Web Worker / main thread / WebSocket), engine worker entry
+tools/sim         Monte Carlo RTP simulator (Node, worker threads, real RoundCore + real seeds)
+scripts/          headless-browser checks (offline round, stress)
+dist/             platform3.html (committed); data/ holds local run outputs (gitignored)
 ```
 
-### How a round runs
+### How it fits together
 
+* The UI talks to the engine only through a `Transport` that carries §8 protocol messages
+  (`packages/client/src/transport.ts`). The default `WorkerTransport` runs `LocalHost` in an inlined Web
+  Worker, so removal sequences live only in the worker's memory until a round is revealed. If the worker
+  cannot start, `InProcessTransport` runs the same host on the main thread behind the same message
+  boundary. `WebSocketTransport` is there for a future real server: swapping it in needs no UI change.
 * `RoundCore` (shared) is a timer-free state machine: bets, moves, cashouts, `tick()`, stage change. It
-  decides *what* happens. The simulator drives it directly; the server wraps it.
-* `Room` (server) decides *when*. It keeps one scheduled event (betting end, next tick, intermission end,
-  results end). **Every inbound action first calls `advance(now)`**, which runs every event whose scheduled
-  time has passed, at its scheduled time. So an action that arrives after a tick's timestamp is always
-  applied after that tick, even if the timer callback is late (tested with a fake clock). At each tick:
-  apply queued actions → remove the next tile → resolve losers → update multiplier (+ max-win caps) →
-  broadcast.
-* Sequences are derived at round creation and held in server memory only. Snapshots carry the tiles
-  *already* removed (`played`), never future ones; seeds and sequences are revealed in `roundEnd`.
-* Each round appends one JSONL line to `data/rounds.jsonl` (seed hash, revealed seed, client seed,
-  sequences, played tiles, timestamped ticks, each player's bet/moves/outcome/payout). Every rejected action
-  goes to `data/rejections.jsonl` with its reason.
+  decides *what* happens. The simulator drives it directly.
+* `Room` (engine) decides *when*. It keeps one scheduled event (betting end, next tick, intermission end,
+  results end). Every inbound action first calls `advance(now)`, which runs every event whose time has
+  passed at its scheduled time, so an action that arrives after a tick's timestamp is applied after that
+  tick even if the timer fires late (tested with a fake clock). Each tick: apply queued actions → remove the
+  next tile → resolve losers → update multiplier (+ max-win caps) → broadcast.
+* `LocalHost` replaces the WebSocket gateway: joins, spectating, rate limits, settings, logs and stats.
+  `RoomManager` shards players over rooms by `roomSoftCap`; the page shows the player's room and lists the
+  others.
+* `BotDriver` adds simulated players as ordinary room members acting through the same `Room` API (same
+  limits, `MOVE_LOCKED`, `TILE_FULL`). They see only public state (counts, Gone tiles, phase) and their own
+  bet, never the sequence. They favour popular tiles (corners, centre, 7/13/21/33/77/88/100), bet
+  €0.10–€20, react 40–320 ms after a tick, hop tiles, and cash out at varied targets (80% in platform 1, 15%
+  in platform 2, 5% in platform 3, 1% ride for 10,000x).
+* Every tick carries a checksum of all 100 counts. The UI recomputes it after applying the deltas; a
+  mismatch counts in the overlay and triggers a resync. This is how "engine and UI stay in sync" is measured.
+* The engine keeps the last 300 round records (seed hash, revealed seed, client seed, sequences, played
+  tiles, timestamped ticks, each player's bet/moves/outcome/payout) and the last 500 rejected actions with
+  reasons. Settings → Download round log exports them as JSONL.
 
 ## Provably fair
 
-* `serverSeed`: 32 random bytes as 64 lowercase hex chars.
+* `serverSeed`: 32 random bytes as 64 lowercase hex chars (`crypto.getRandomValues`).
 * `serverSeedHash = hex(SHA-256(utf8(serverSeed)))`: the **hex string** is hashed, so any SHA-256 tool can
   check it.
-* `clientSeed = "<roundId>:<nonce>"` where the nonce is the room's public round counter (pluggable
+* `clientSeed = "<roundId>:<nonce>"`, where the nonce is the room's public round counter (pluggable
   `ClientSeedProvider`; no player input in the MVP).
 * For stage `s`, a stream of `HMAC-SHA256(key = utf8(serverSeed), msg = "<clientSeed>:<s>:<counter>")`,
   counter from 0, is cut into big-endian uint32 chunks. A draw in `[0, n)` rejects values
@@ -89,32 +104,37 @@ data/             rounds.jsonl, rejections.jsonl, server.log, sim/load-test outp
   `i + draw(100 - i)`.
 * Stage 1 uses the first 91 entries, stage 2 the first 90, stage 3 the first 99; entry 99 of the stage-3
   permutation is the 10,000x tile.
-* The same code (`@noble/hashes`, isomorphic) runs on the server and in the browser's Fairness modal, which
-  re-derives the hash and all three sequences for any logged round (fetched from `/api/rounds/:id`) and also
-  checks them against the hash and tiles that browser itself saw during the round.
+* The engine derives sequences synchronously with `@noble/hashes`. The Fairness modal re-derives them with
+  **Web Crypto** (`crypto.subtle`), an independent implementation, and compares them with the round log, with
+  the hash this browser saw before the round, and with the tiles it saw go. A unit test checks both
+  implementations agree on 200 random seeds. Web Crypto requires a secure context. `file://` qualifies in
+  Chrome, Edge and Firefox (verified headless). In an opaque origin without it (for example a `data:` URL),
+  the modal falls back to the bundled implementation and says so.
 
 ## Protocol notes (additions to spec §8)
 
-* Client actions may carry `rid`; the matching `*Result` echoes it (used for latency measurement).
+* Client actions may carry `rid`; the matching `*Result` echoes it.
 * `resync {}` asks for a snapshot after a `seq` gap; `ping {at}` → `pong`.
+* `join` may carry `balance`: the page's persisted play-money balance, used to seed the wallet once.
+* Local-host extensions: `settings {bots, busyServer, roomSoftCap}` (both directions), `resetBalance` →
+  `balance`, `getHistory` → `history`, `getRound` → `roundRecord`, `getLog` → `log`, and `hostStats` once
+  per second (tick lateness, engine busy share, rooms, reject counts).
+* `tick.checksum`: order-sensitive checksum of the 100 counts after the tick.
 * `cancelBet` answers with `cancelResult`. `rooms {rooms, home, watching}` is sent on join/spectate.
 * Extra error codes: `RATE_LIMIT`, `BAD_REQUEST`, `NOT_JOINED`, `NO_ROOM`, `WALLET_ERROR`.
-* `countsDelta` is a flat list `[tileId, count, tileId, count, …]`; `goneMask` is 25 hex chars (bit *i* =
-  tile *i*). `roundState.tiles` is the 100 counts as an array.
-* Room broadcasts carry a per-room `seq`. Snapshots carry the current `seq`. The server skips room
-  broadcasts to a socket with more than 1 MB unsent; that client sees the gap and resyncs.
-* HTTP: `/metrics`, `/api/rooms`, `/api/history?roomId=`, `/api/rounds?roomId=&limit=`, `/api/rounds/:id`.
+* `countsDelta` is a flat list `[tileId, count, …]`; `goneMask` is 25 hex chars (bit *i* = tile *i*).
+  Room broadcasts carry a per-room `seq`; snapshots carry the current `seq`.
 
 ## Open questions (spec §14): defaults used
 
 | # | Question | Default built |
 | --- | --- | --- |
-| 1 | Betting-phase length | 10 s (`BETTING_MS`) |
+| 1 | Betting-phase length | 10 s |
 | 2 | Cash out during intermission? | Yes, at the stage's final multiplier (10.77x / 104.46x) |
 | 3 | Cash out before the first tile goes? | No. 1.00x is shown and the button stays disabled (`PHASE`) |
 | 4 | One bet or two per round? | One |
 | 5 | Show nicknames on tiles? | No, counts only. Nicknames appear only in the live feed's top cashouts |
-| 6 | `roomSoftCap` | 2,000 (`ROOM_SOFT_CAP`); see `LOADTEST.md` for the 9,900 single-room numbers |
+| 6 | `roomSoftCap` | 2,000, editable in Settings; it only applies with "simulate busy server" on |
 | 7 | House-edge flattening | Not touched. Multipliers are exactly `spec/multipliers.json` |
 
 ## Interpretations of ambiguous points
@@ -123,38 +143,55 @@ data/             rounds.jsonl, rejections.jsonl, server.log, sim/load-test outp
    betting ends, or after intermission ends). During the first 500 ms of stage 2/3 the multiplier shown and
    paid is the previous stage's final value.
 2. **Resurrection moment.** All tiles come back at the *start* of intermission, so survivors can move to
-   any tile during the "Resurrection" countdown.
-3. **Move lock.** A move is `MOVE_LOCKED` when the next tick is less than `moveLockMs` away
-   (`nextTickAt - now < 100`). It applies to every RUNNING tick, fast mode included. Betting and intermission
-   have no imminent removal, so they are never locked. Cashouts are never locked.
+   any tile during the "Resurrection" countdown. "Next" then shows the next platform's first multiplier.
+3. **Move lock.** A move is `MOVE_LOCKED` when the next tick is less than `moveLockMs` away. It applies to
+   every RUNNING tick, fast mode included. Betting and intermission have no imminent removal, so they are
+   never locked. Cashouts are never locked.
 4. **Fast finish.** When the board empties during RUNNING, the next tick happens at
    `min(scheduled tick, now + fastTickMs)`, then every 200 ms to the end of that stage, then ENDED. If the
-   board empties during intermission (everyone cashed out), the round ends immediately. A round with no bets
-   runs stage 1 at 200 ms from the first tick. Order is always the precommitted one (tested).
+   board empties during intermission, the round ends immediately. A round with no bets runs stage 1 at
+   200 ms from the first tick. Order is always the precommitted one (tested).
 5. **Max win.** `payout = min(floor(bet × multiplier), maxWinPerBet)` for cashouts, forced cashouts and the
    10,000x survivors. A player is force-cashed on the tick where `bet × multiplier` reaches the cap. With
-   the default limits (€10,000 cap) only bets of €1.00 or more can reach it (on the last stage-3 tile at
-   10,000x); bets of €95.73 or more reach it at the end of stage 2. No round-wide cap exists.
+   the default €10,000 cap only bets of €1.00 or more can reach it (on the last stage-3 tile); bets of €95.73
+   or more reach it at the end of stage 2. No round-wide cap exists.
 6. **History entry.** Each finished round shows its 10,000x tile (from the revealed seed) and either
    "no survivors at P*N*" (the stage in which the board emptied) or how many players won 10,000x.
 7. **Changing tile during betting** uses the normal `move` message. Changing the amount = cancel + bet.
-8. **Seat reservation.** A bet takes its tile seat at arrival (first come, first served) and then
-   debits the wallet; a failed debit releases the seat. Cancel uses `wallet.rollback(betTx)`.
-9. **Disconnects.** A disconnected player's bet stays on the board and rides. Reconnecting with the same
-   nickname returns them to the same room. Joining with a nickname that is already connected (another tab)
-   takes over that session and closes the old socket.
-10. **Room assignment** counts connected members, not bettors. Ties go to the oldest room. An extra room
-    closes after 3 consecutive rounds with no members; the last room never closes.
+8. **Seat reservation.** A bet takes its tile seat at arrival (first come, first served) and then debits
+   the wallet; a failed debit releases the seat. Cancel uses `wallet.rollback(betTx)`.
+9. **Rooms in a single page.** With "simulate busy server" off, everyone (player + bots) shares one room;
+   tile capacity still caps seated players at 9,900. With it on, `roomSoftCap` applies: bots fill the
+   fullest open room up to the cap and further rooms open (and close again after 3 empty rounds). The page
+   plays the player's room; others can be spectated from the Rooms panel.
+10. **Wallet persistence.** The engine (in the worker) cannot read `localStorage`, so the page stores the
+    balance after every update and passes it in `join`. It seeds the wallet once per engine lifetime.
 11. **Credit retries.** Failed credits are retried with the same `txId` after 0.1, 0.5, 2, 5 and 10 s, each
     failure is logged (`credit_failed`), then `credit_abandoned` is logged for manual reconciliation.
-12. **Rate limits.** Moves: 5/s per socket (token bucket). All messages: 30/s with a burst of 60.
+12. **Rate limits.** Moves: 5/s (token bucket). All messages: 30/s with a burst of 60.
 13. **Client display.** The cash-out button shows `floor(bet × current multiplier)` using the shared
-    `payout()` helper. That is display only: the amount paid is the one in `cashoutResult`.
-14. **Simulator bet size.** The simulator bets €1, so `maxWinPerBet` never binds and empirical RTP is
+    `payout()` helper. That is display only; the amount paid is the one in `cashoutResult`.
+14. **"Every tick lands within ±50 ms"** is measured twice: in the engine (timer fire time minus scheduled
+    time) and in the UI (receipt time minus scheduled time). See `LOADTEST.md`.
+15. **Sounds/fonts.** The page uses system fonts and has no sound, so there is nothing else to inline.
+16. **Simulator bet size.** The simulator bets €1, so `maxWinPerBet` never binds and empirical RTP is
     comparable with the uncapped §4 figures.
-15. Spec §0 says to ask the product owner where the spec and the `.docx` disagree. This build follows the
-    spec (and `multipliers.json`) only; the `.docx` was not consulted.
+17. Spec §0 (before it) says to ask the product owner where the spec and the `.docx` disagree. This build
+    follows the spec and `multipliers.json` only; the `.docx` was not consulted.
 
-## Acceptance criteria (§13)
+## Acceptance criteria (§13 as amended by §0)
 
-See the bottom of `LOADTEST.md` and the session report for how each was verified.
+| # | Criterion | How it is verified |
+| --- | --- | --- |
+| 1 | Engine and UI in sync under 9,900 bots at ≥ 50 FPS, ticks within ±50 ms | Tick checksums (UI vs engine) in `host.test.ts` with 9,900 bots and two connections; in-browser stress run, see `LOADTEST.md` |
+| 2 | Three stages end to end, survivors paid 10,000x (subject to cap) | `room.test.ts` "all three stages end to end", engine tests |
+| 3 | Cashout pays `floor(bet × table[stage][k-1])` | `room.test.ts` (every k of stage 1, odd bets), `math.test.ts` (every table value vs BigInt) |
+| 4 | 99 per tile; 100th rejected at bet and move | `room.test.ts`, `engine.test.ts` |
+| 5 | Fast finish at 5/s in precommitted order, then ENDED | `room.test.ts` "fast finish" (4 cases) |
+| 6 | `MOVE_LOCKED`, `TOO_LATE`, no double pay | `room.test.ts`, `wallet.test.ts` (idempotency, retries with same txId) |
+| 7 | Verifier matches every sequence for any logged round | Fairness modal (Web Crypto), `host.test.ts` (`checkRecord` on every logged round), `npm run verify` |
+| 8 | `npm run sim` passes | 1M rounds, 282 strategies, worst \|z\| below 4 (numbers in the session report) |
+| 9 | In-page stress result recorded | `LOADTEST.md` |
+| 10 | New room past `roomSoftCap` | `roomManager.test.ts`, `host.test.ts` "simulate busy server" |
+| 11 | `npm test` green | |
+| new | Plays a full round from disk with networking off | `npm run check:offline` |

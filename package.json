@@ -16,7 +16,9 @@
     "test": "vitest run",
     "typecheck": "tsc -p packages/shared && tsc -p packages/engine && tsc -p packages/client && tsc -p tools/sim",
     "sim": "npm run sim -w @p3/sim --",
-    "verify": "tsx packages/engine/src/verifyLog.ts"
+    "verify": "tsx packages/engine/src/verifyLog.ts",
+    "check:offline": "node scripts/offline-check.mjs",
+    "check:stress": "node scripts/stress-check.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
