@@ -110,6 +110,11 @@ export class FakeClock implements Clock {
     this.t = Math.max(this.t, target);
   }
 
+  /** Move time forward WITHOUT firing timers: simulates a timer callback running late. */
+  jump(ms: number): void {
+    this.t += ms;
+  }
+
   pendingTimers(): number {
     return this.timers.size;
   }

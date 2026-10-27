@@ -218,7 +218,9 @@ export class RoundCore {
         if (survivors.length === 0) this.emptiedAtStage = 3;
         this.phase = 'ended';
       } else {
+        // Resurrection: all tiles come back as soon as intermission starts; survivors keep their tiles.
         this.phase = 'intermission';
+        this.gone.fill(0);
       }
     }
     return { stage, k: this.removed, tile, multiplier100: m100, losers, forced, stageComplete, survivors };
