@@ -745,3 +745,15 @@ code {
   border-top: 1px solid var(--line);
   padding-top: 6px;
 }
+
+/* ---------- your own row in public lists; how-to-play ---------- */
+.feed li.you {
+  background: rgba(250, 204, 21, 0.12);
+  border-radius: 6px;
+  padding-left: 4px;
+  font-weight: 700;
+}
+.help summary {
+  cursor: pointer;
+  font-weight: 600;
+}

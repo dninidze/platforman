@@ -1,24 +1,30 @@
-# Platform 3 – MVP
+# Last Tile Standing – MVP
+
+(Working title was "Platform 3". The user-visible title is the `GAME_TITLE` constant in
+`packages/shared/src/constants.ts`; internal package and folder names keep the old name.)
 
 A multiplayer crash game. 100 tiles (10×10). Players bet on a tile, tiles go **Gone** one by one every
 0.5 s in a precommitted, provably fair order, and the multiplier climbs after every removal. There are
-three platforms (stages): the board is resurrected after 91 and then 90 removals, and anyone still standing
+three stages (labelled by `STAGE_LABEL`: "Stage 1/2/3"): the board is resurrected after 91 and then 90 removals, and anyone still standing
 on the last tile of stage 3 is paid 10,000x. Play money only.
 
-Built from `../spec/BUILD_SPEC.md` (including **§0: one self-contained HTML file**) and
+Built from `../spec/BUILD_SPEC.md` (including **§0: one self-contained HTML file**, **§0.1: identity from the
+aggregator, no name prompt** and **§0.2: title and stage labels**) and
 `../spec/multipliers.json` (copied verbatim into `packages/shared/src/multipliers.json`; a unit test asserts
 they stay identical).
 
 ## The deliverable
 
-**`dist/platform3.html`** (about 280 KB): open it by double-click. Everything is inlined: React UI, CSS,
+**`dist/last-tile-standing.html`** (about 290 KB): open it by double-click. Everything is inlined: React UI, CSS,
 the game engine (as an inlined Web Worker) and the multiplier table. It makes no network requests and
 works with networking disabled (checked with `npm run check:offline`, below).
 
-1. Enter a nickname. New nicknames get €1,000 of play money; the balance is kept in `localStorage` (if
-   the browser allows it) and can be reset in **Settings**.
+1. The page opens straight into the room. There is no name prompt: you play as a generated demo
+   identity (for example "SwiftFalcon27", shown in the header) with €1,000 of play money. Name, id and
+   balance are kept in `localStorage` when the browser allows it. **Settings** has "Reset balance" and
+   "New demo identity".
 2. During betting, tap a tile, set an amount and press **Bet**. Tap another tile to move.
-3. While tiles go, press **Cash out** before your tile goes Gone, or ride all three platforms.
+3. While tiles go, press **Cash out** before your tile goes Gone, or ride all three stages.
 4. **Settings**: number of simulated players (0–9,900, default 300), "simulate busy server" (shards bots
    into extra rooms past `roomSoftCap`), performance overlay with the stress test, reset balance, download
    the round log (JSONL).
@@ -41,12 +47,12 @@ npm run build
 
 | Command | What it does |
 | --- | --- |
-| `npm run build` | Builds `dist/platform3.html` (Vite + `vite-plugin-singlefile`) and fails if any external `src`/`href` remains or the file exceeds 2 MB |
+| `npm run build` | Builds `dist/last-tile-standing.html` (Vite + `vite-plugin-singlefile`) and fails if any external `src`/`href` remains or the file exceeds 2 MB |
 | `npm run dev` | Vite dev server on <http://localhost:5173> (same app, engine in a worker) |
 | `npm test` | Vitest: shared engine, fairness (incl. Web Crypto parity), limits, capacity, fast finish, room manager, wallet, in-page host and bots |
 | `npm run typecheck` | `tsc` (strict) over every package |
 | `npm run sim` | Monte Carlo RTP check in Node, 1M rounds by default (`-- --rounds N --seed hex --verbose --csv file`) |
-| `npm run check:offline` | Opens `dist/platform3.html` from disk in headless Chrome/Edge with networking disabled, plays a full round through the UI, runs the verifier, and reports any network request |
+| `npm run check:offline` | Opens `dist/last-tile-standing.html` from disk in headless Chrome/Edge with networking disabled and checks the §0.1/§0.2 points (no prompt, stable demo name, new identity, masked lists, aggregator token + USD, title, stage labels), plays a full round through the UI, runs the verifier, and reports any network request |
 | `npm run check:stress` | Same harness: 9,900 bots for N rounds via the in-page stress recorder (`-- 5 --headed`) |
 | `npm run verify -- file.jsonl` | Re-verifies every round in a downloaded round log (seed hash, 3 sequences, tick log, payouts) |
 
@@ -60,7 +66,7 @@ packages/engine   Room (timeline, wallet, broadcasts), RoomManager (sharding), M
 packages/client   React UI, transports (Web Worker / main thread / WebSocket), engine worker entry
 tools/sim         Monte Carlo RTP simulator (Node, worker threads, real RoundCore + real seeds)
 scripts/          headless-browser checks (offline round, stress)
-dist/             platform3.html (committed); data/ holds local run outputs (gitignored)
+dist/             last-tile-standing.html (committed); data/ holds local run outputs (gitignored)
 ```
 
 ### How it fits together
@@ -83,13 +89,40 @@ dist/             platform3.html (committed); data/ holds local run outputs (git
 * `BotDriver` adds simulated players as ordinary room members acting through the same `Room` API (same
   limits, `MOVE_LOCKED`, `TILE_FULL`). They see only public state (counts, Gone tiles, phase) and their own
   bet, never the sequence. They favour popular tiles (corners, centre, 7/13/21/33/77/88/100), bet
-  €0.10–€20, react 40–320 ms after a tick, hop tiles, and cash out at varied targets (80% in platform 1, 15%
-  in platform 2, 5% in platform 3, 1% ride for 10,000x).
+  €0.10–€20, react 40–320 ms after a tick, hop tiles, and cash out at varied targets (80% in Stage 1, 15% in
+  Stage 2, 5% in Stage 3, 1% ride for 10,000x). Bot names come from the same generator as demo players.
 * Every tick carries a checksum of all 100 counts. The UI recomputes it after applying the deltas; a
   mismatch counts in the overlay and triggers a resync. This is how "engine and UI stay in sync" is measured.
 * The engine keeps the last 300 round records (seed hash, revealed seed, client seed, sequences, played
   tiles, timestamped ticks, each player's bet/moves/outcome/payout) and the last 500 rejected actions with
   reasons. Settings → Download round log exports them as JSONL.
+
+## Player identity (§0.1)
+
+Identity, currency and balance come from the operator, never from the player. `packages/shared/src/session.ts`
+defines a pluggable `SessionProvider` (`start(launch: LaunchParams): Promise<PlayerSession>`). Launch
+parameters are parsed from the URL: `token`, `operator`, `currency`, `lang`, `mode` (`real`/`demo`),
+`lobbyUrl` (http/https only).
+
+* **No `token`: `DemoSessionProvider`** (the offline HTML). It generates a display name from ~100
+  adjectives + ~100 nouns + 2 digits and a random `playerId` (`demo:` + 24 hex), and stores both under
+  `lts.demo.identity` in `localStorage` (try/catch: without storage they are regenerated on each load).
+  The demo balance is stored per `playerId` (`lts.balance.<playerId>`). "New demo identity" regenerates
+  both and reloads.
+* **`?token=…`: `AggregatorSessionProvider`** (stub). **Real token validation goes in its `validate`
+  function** (`packages/shared/src/session.ts`, `AggregatorSessionProvider` constructor). In production that
+  is a server-to-server call from the game server to the aggregator (for example
+  `POST /session/validate {token, operator}`) returning playerId, display name, currency, balance and mode.
+  The browser must never be trusted with it. The stub derives `playerId = agg:` + SHA-256(operator:token)
+  and takes the currency from the URL. If the aggregator supplies a display name it is used; otherwise a
+  stable pseudonym is derived from a hash of `playerId`. Example: `last-tile-standing.html?token=abc&currency=USD`.
+* The page sends the session's `playerId`, `displayName`, `currency` and opening balance in `join`. The
+  engine starts its rooms in the session currency (the worker gets it in its first message).
+* **Masking.** Public lists (live feed top cashouts, round survivors) carry names masked as the first 2
+  characters + `***` + the last character ("Sw***7"). The masking is done in the engine, so full names
+  never reach other viewers; the round log keeps full names for audit. The player's own feed row is
+  highlighted as "You (Sw***7)". Bots use the same name generator, so their names look like real players.
+* `lang` is parsed and kept on the session but the UI is English-only in the MVP.
 
 ## Provably fair
 
@@ -133,7 +166,7 @@ dist/             platform3.html (committed); data/ holds local run outputs (git
 | 2 | Cash out during intermission? | Yes, at the stage's final multiplier (10.77x / 104.46x) |
 | 3 | Cash out before the first tile goes? | No. 1.00x is shown and the button stays disabled (`PHASE`) |
 | 4 | One bet or two per round? | One |
-| 5 | Show nicknames on tiles? | No, counts only. Nicknames appear only in the live feed's top cashouts |
+| 5 | Show nicknames on tiles? | No, counts only. Names appear only in the live feed's top cashouts, masked ("Sw***7") |
 | 6 | `roomSoftCap` | 2,000, editable in Settings; it only applies with "simulate busy server" on |
 | 7 | House-edge flattening | Not touched. Multipliers are exactly `spec/multipliers.json` |
 
@@ -156,7 +189,7 @@ dist/             platform3.html (committed); data/ holds local run outputs (git
    the default €10,000 cap only bets of €1.00 or more can reach it (on the last stage-3 tile); bets of €95.73
    or more reach it at the end of stage 2. No round-wide cap exists.
 6. **History entry.** Each finished round shows its 10,000x tile (from the revealed seed) and either
-   "no survivors at P*N*" (the stage in which the board emptied) or how many players won 10,000x.
+   "no survivors at Stage *N*" (the stage in which the board emptied) or how many players won 10,000x.
 7. **Changing tile during betting** uses the normal `move` message. Changing the amount = cancel + bet.
 8. **Seat reservation.** A bet takes its tile seat at arrival (first come, first served) and then debits
    the wallet; a failed debit releases the seat. Cancel uses `wallet.rollback(betTx)`.
@@ -193,5 +226,7 @@ dist/             platform3.html (committed); data/ holds local run outputs (git
 | 8 | `npm run sim` passes | 1M rounds in 33 s, 282 strategies (every cash-out point, random walk with moves, ride to 10,000x), worst \|z\| 3.09, none beyond 4σ |
 | 9 | In-page stress result recorded | `LOADTEST.md` |
 | 10 | New room past `roomSoftCap` | `roomManager.test.ts`, `host.test.ts` "simulate busy server" |
-| 11 | `npm test` green | 67 tests in 7 files |
+| 11 | `npm test` green | 79 tests in 8 files |
 | new | Plays a full round from disk with networking off | `npm run check:offline` |
+| §0.1 | No prompt, generated name shown; reload keeps it; `?token=abc&currency=USD` uses the aggregator provider and shows USD; new demo identity; masked lists | `session.test.ts`, `host.test.ts`, `room.test.ts`, and `npm run check:offline` in the browser |
+| §0.2 | `GAME_TITLE` in `<title>`, header, help text, fairness modal, README; output `dist/last-tile-standing.html`; "Stage 1/2/3" in tabs, intermission and history | `npm run build` (title injected from the constant), `npm run check:offline` |

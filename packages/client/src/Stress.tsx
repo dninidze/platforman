@@ -3,7 +3,22 @@ import type { GameClient, GameState } from './net';
 import { store } from './net';
 
 /** Settings drawer: bot count, busy-server demo, overlay, wallet reset, log download. */
-export function SettingsPanel({ s, client, overlay, setOverlay, onClose }: { s: GameState; client: GameClient; overlay: boolean; setOverlay: (v: boolean) => void; onClose: () => void }) {
+export function SettingsPanel({
+  s,
+  client,
+  overlay,
+  setOverlay,
+  onNewIdentity,
+  onClose,
+}: {
+  s: GameState;
+  client: GameClient;
+  overlay: boolean;
+  setOverlay: (v: boolean) => void;
+  /** Only in demo mode: regenerate name and id. */
+  onNewIdentity?: () => void;
+  onClose: () => void;
+}) {
   const st = s.settings;
   const [bots, setBots] = useState(String(st?.bots ?? 300));
   const [cap, setCap] = useState(String(st?.roomSoftCap ?? 2000));
@@ -21,7 +36,7 @@ export function SettingsPanel({ s, client, overlay, setOverlay, onClose }: { s: 
     const url = URL.createObjectURL(new Blob([jsonl], { type: 'application/x-ndjson' }));
     const a = document.createElement('a');
     a.href = url;
-    a.download = `platform3-rounds-${new Date().toISOString().slice(0, 19).replace(/:/g, '')}.jsonl`;
+    a.download = `last-tile-standing-rounds-${new Date().toISOString().slice(0, 19).replace(/:/g, '')}.jsonl`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1_000);
   };
@@ -86,11 +101,19 @@ export function SettingsPanel({ s, client, overlay, setOverlay, onClose }: { s: 
           <button className="btn" onClick={() => client.resetBalance()}>
             Reset balance
           </button>
+          {onNewIdentity && (
+            <button className="btn" onClick={onNewIdentity} title="Generate a new name and player id (reloads the game)">
+              New demo identity
+            </button>
+          )}
           <button className="btn" onClick={download}>
             Download round log (JSONL)
           </button>
         </div>
-        <p className="muted small">Engine: {s.transport}. Everything runs in this page; nothing is sent over the network.</p>
+        <p className="muted small">
+          Playing as <b>{s.session?.displayName}</b> ({s.session?.provider === 'aggregator' ? 'aggregator session, stub' : 'demo identity'}, {s.session?.currency}). Engine:{' '}
+          {s.transport}. Everything runs in this page; nothing is sent over the network.
+        </p>
       </div>
     </div>
   );

@@ -6,7 +6,7 @@ lands within ±50 ms.
 
 ## How it is measured
 
-Open `dist/platform3.html`, then **Settings → Performance overlay** (or add `?perf`), then **Stress test
+Open `dist/last-tile-standing.html`, then **Settings → Performance overlay** (or add `?perf`), then **Stress test
 (9,900 bots)**. The recorder sets the bot count to 9,900 and records N full rounds:
 
 * **FPS**: frames counted with `requestAnimationFrame` in 1-second windows on the UI thread.
@@ -27,9 +27,14 @@ mapped to nowhere), joins, presses the button, and saves the recorder's JSON to
 In the stress scenario each of the 9,900 bots bets €0.10–€20 on a popular-biased tile every round, so most
 tiles sit at the 99-player cap and many bets and moves hit `TILE_FULL`. Bots hop tiles with 2% probability
 per tick, react 40–320 ms after a tick (some moves land in the lock window and get `MOVE_LOCKED`), and cash
-out at varied targets. That keeps rounds running into platforms 2 and 3.
+out at varied targets. That keeps rounds running into Stages 2 and 3.
 
-## Results (2026-10-28, final build)
+## Results (2026-10-28)
+
+Measured on the build just before change request 2 (§0.1/§0.2: session providers, masked names, title
+and stage-label rename, output renamed to `last-tile-standing.html`). Those changes do not touch the engine
+timing, bots or rendering paths measured here. They were checked functionally with `npm run check:offline`,
+not re-measured.
 
 Machine: Windows 11 desktop, 32 logical cores, Chrome 156. Each run: 9,900 bots, 3 full rounds, 840 ticks,
 about 7.5 minutes. The engine ran in the inlined Web Worker in all three runs.
@@ -57,7 +62,7 @@ resolution (~15.6 ms).
 * Ticks never fire early (`setTimeout` semantics), so all lateness values are ≥ 0. The ±50 ms target is
   met as 0…+18 ms.
 * An earlier headed run (before the final build) showed **1 checksum mismatch** in 840 ticks. Root cause:
-  when a bot was force-cashed at `maxWinPerBet` (€20 × 500x in platform 3) or paid as a stage-3 survivor,
+  when a bot was force-cashed at `maxWinPerBet` (€20 × 500x in Stage 3) or paid as a stage-3 survivor,
   its tile count changed without the tile being added to that tick's delta. Fixed in `room.ts` and covered
   by two new tests. All three runs above are on the fixed build.
 * Before the fix that moved the worker to a classic (IIFE) bundle, Chrome refused the inlined *module*

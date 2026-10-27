@@ -1,4 +1,4 @@
-// In-page stress mode, automated: opens dist/platform3.html from disk (networking blocked), joins,
+// In-page stress mode, automated: opens dist/last-tile-standing.html from disk (networking blocked), enters the room,
 // presses the overlay's "Stress test (9,900 bots)" button for N rounds and prints the recorder's result.
 //
 //   node scripts/stress-check.mjs [rounds=5] [--headed] [--cpu=4] [--browser=path]
@@ -9,7 +9,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { findBrowser, launch, setInput, sleep } from './browser.mjs';
 
 const appRoot = fileURLToPath(new URL('..', import.meta.url));
-const file = resolve(appRoot, 'dist/platform3.html');
+const file = resolve(appRoot, 'dist/last-tile-standing.html');
 if (!existsSync(file)) throw new Error('run `npm run build` first');
 const rounds = Number(process.argv.find((a) => /^\d+$/.test(a)) ?? 5);
 const headed = process.argv.includes('--headed');
@@ -21,10 +21,7 @@ const t0 = Date.now();
 const log = (s) => console.log(`[${((Date.now() - t0) / 1000).toFixed(0)}s] ${s}`);
 
 await b.cdp('Page.navigate', { url: `${pathToFileURL(file).href}?perf` });
-await b.waitFor(`!!document.querySelector('#nick') && !document.querySelector('.join-card button').textContent.includes('Connecting')`, 15_000, 'engine start');
-await b.evaluate(setInput('#nick', 'stress'));
-await sleep(100);
-await b.evaluate(`document.querySelector('.join-card button').click(), true`);
+await b.waitFor(`!!document.querySelector('.board .tile')`, 20_000, 'room view');
 await b.waitFor(`!!document.querySelector('.perf .num')`, 10_000, 'overlay');
 await b.evaluate(setInput('.perf .num', String(rounds)));
 await sleep(100);

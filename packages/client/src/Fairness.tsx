@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { hashServerSeed, hashServerSeedWebCrypto, verifyRound, verifyRoundWebCrypto, type FairnessRecord, type VerifyResult } from '@p3/shared';
+import { GAME_TITLE, stageName, hashServerSeed, hashServerSeedWebCrypto, verifyRound, verifyRoundWebCrypto, type FairnessRecord, type VerifyResult } from '@p3/shared';
 import type { GameClient, GameState, Revealed } from './net';
 
 interface LoggedRound extends FairnessRecord {
@@ -80,7 +80,7 @@ export function FairnessModal({ s, client, onClose }: { s: GameState; client: Ga
     <div className="modal-bg" onClick={onClose}>
       <div className="modal" role="dialog" aria-modal="true" aria-labelledby="fair-title" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
-          <h2 id="fair-title">Provably fair</h2>
+          <h2 id="fair-title">{GAME_TITLE} · Provably fair</h2>
           <button className="link" onClick={onClose} aria-label="Close">
             ✕
           </button>
@@ -124,12 +124,12 @@ export function FairnessModal({ s, client, onClose }: { s: GameState; client: Ga
               {outcome.seenHashOk !== null && <li>{mark(outcome.seenHashOk)} …and equals the hash this browser was shown before the round</li>}
               {outcome.result.sequencesOk.map((ok, i) => (
                 <li key={i}>
-                  {mark(ok)} Platform {i + 1} sequence recomputed ({outcome.result.derived[i].length} tiles)
+                  {mark(ok)} {stageName(i + 1)} sequence recomputed ({outcome.result.derived[i].length} tiles)
                 </li>
               ))}
               {outcome.result.playedOk.map((ok, i) => (
                 <li key={`p${i}`}>
-                  {mark(ok)} Platform {i + 1} tiles played follow the sequence
+                  {mark(ok)} {stageName(i + 1)} tiles played follow the sequence
                 </li>
               ))}
               {outcome.observedOk !== null && <li>{mark(outcome.observedOk)} Tiles this browser saw go match the sequence</li>}
@@ -148,7 +148,7 @@ export function FairnessModal({ s, client, onClose }: { s: GameState; client: Ga
               <summary>Recomputed sequences</summary>
               {outcome.result.derived.map((seq, i) => (
                 <p key={i} className="seq">
-                  <b>P{i + 1}:</b> {seq.map((t) => t + 1).join(' ')}
+                  <b>{stageName(i + 1)}:</b> {seq.map((t) => t + 1).join(' ')}
                 </p>
               ))}
             </details>

@@ -23,8 +23,11 @@ export type CountsDelta = number[];
 
 // ---------- client -> server ----------
 export type ClientMessage =
-  /** `balance`: a play-money balance the page persisted earlier (local host only). */
-  | { t: 'join'; nickname: string; currency?: string; balance?: number; rid?: number }
+  /**
+   * Identity comes from the session provider (aggregator token or demo identity), never typed by the player.
+   * `balance`: an opening balance (aggregator) or the page's persisted play-money balance (demo).
+   */
+  | { t: 'join'; playerId: string; displayName: string; currency?: string; balance?: number; rid?: number }
   | { t: 'spectate'; roomId: string; rid?: number }
   | { t: 'bet'; amount: number; tileId: number; rid?: number }
   | { t: 'cancelBet'; rid?: number }
@@ -64,7 +67,7 @@ export interface RoomInfo {
 export interface WelcomeMsg {
   t: 'welcome';
   playerId: string;
-  nickname: string;
+  displayName: string;
   roomId: string;
   balance: number;
   config: PublicConfig;

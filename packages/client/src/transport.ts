@@ -34,9 +34,11 @@ export class WorkerTransport extends BaseTransport {
   readonly kind = 'web worker';
   private readonly worker: Worker;
 
-  constructor(make: () => Worker, onFail: (err: unknown) => void) {
+  /** `init` is posted before anything else; the worker builds its engine from it (e.g. the currency). */
+  constructor(make: () => Worker, onFail: (err: unknown) => void, init: { currency: string }) {
     super();
     this.worker = make();
+    this.worker.postMessage({ t: '__init', ...init });
     this.worker.onmessage = (e: MessageEvent<ServerMessage>) => this.msgCb(e.data);
     this.worker.onerror = (e) => {
       this.statusCb(false);

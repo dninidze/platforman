@@ -2,6 +2,7 @@ import {
   countsChecksum,
   decodeGoneMask,
   type HostSettings,
+  type PlayerSession,
   type HostStatsMsg,
   type RoundRecordMsg,
   type ClientMessage,
@@ -35,7 +36,7 @@ const store = {
   },
 };
 export { store };
-const balanceKey = (nick: string) => `p3.balance.${nick.toLowerCase()}`;
+const balanceKey = (playerId: string) => `lts.balance.${playerId}`;
 
 /**
  * Client-side store. It only mirrors server state: no outcome is ever computed here.
@@ -82,7 +83,8 @@ export interface Toast {
 export interface GameState {
   connected: boolean;
   joined: boolean;
-  nickname: string | null;
+  /** Identity from the session provider (aggregator token or demo identity). */
+  session: PlayerSession | null;
   homeRoom: string | null;
   watching: string | null;
   config: PublicConfig | null;
@@ -133,7 +135,7 @@ export const reasonText = (r?: ErrorCode) => (r && REASON_TEXT[r]) || r || 'Reje
 const initial: GameState = {
   connected: false,
   joined: false,
-  nickname: null,
+  session: null,
   homeRoom: null,
   watching: null,
   config: null,
@@ -164,7 +166,7 @@ export class GameClient {
   private awaitingSnapshot = false;
   private toastId = 0;
   private rid = 0;
-  private wantNickname: string | null = null;
+  private session: PlayerSession | null = null;
   private historyFor: string | null = null;
   private closed = false;
 
@@ -202,18 +204,27 @@ export class GameClient {
     t.onMessage((m) => this.onMessage(m));
     t.onStatus((up) => {
       this.set({ connected: up });
-      if (up && this.wantNickname) this.sendJoin(this.wantNickname);
+      if (up && this.session) this.sendJoin(this.session);
     });
   }
 
-  private sendJoin(nickname: string) {
-    const saved = Number(store.get(balanceKey(nickname)));
-    this.send({ t: 'join', nickname, ...(store.get(balanceKey(nickname)) !== null && Number.isInteger(saved) && saved >= 0 ? { balance: saved } : {}) });
+  /**
+   * Join with the provider's identity. The opening balance is the aggregator's when it sent one, else
+   * (demo) the balance this page persisted for this playerId.
+   */
+  private sendJoin(session: PlayerSession) {
+    const raw = store.get(balanceKey(session.playerId));
+    const saved = Number(raw);
+    const balance = session.balance ?? (raw !== null && Number.isInteger(saved) && saved >= 0 ? saved : undefined);
+    this.send({ t: 'join', playerId: session.playerId, displayName: session.displayName, currency: session.currency, ...(balance !== undefined ? { balance } : {}) });
   }
 
-  join(nickname: string) {
-    this.wantNickname = nickname;
-    if (this.state.connected) this.sendJoin(nickname);
+  /** Start playing as `session` (connects the transport if needed). */
+  start(session: PlayerSession) {
+    this.session = session;
+    this.set({ session });
+    if (!this.transport) this.connect();
+    else if (this.state.connected) this.sendJoin(session);
   }
 
   updateSettings(p: Partial<HostSettings>) {
@@ -239,7 +250,8 @@ export class GameClient {
   }
 
   private persistBalance(balance: number) {
-    if (this.state.nickname) store.set(balanceKey(this.state.nickname), String(balance));
+    // Demo balances persist in this browser; an aggregator's wallet is the source of truth for real sessions.
+    if (this.session?.mode === 'demo') store.set(balanceKey(this.session.playerId), String(balance));
   }
 
   private send(msg: ClientMessage) {
@@ -299,13 +311,11 @@ export class GameClient {
       case 'welcome':
         this.set({
           joined: true,
-          nickname: m.nickname,
           homeRoom: m.roomId,
           config: m.config,
           balance: m.balance,
           rooms: m.rooms,
         });
-        store.set('p3.nickname', m.nickname);
         this.persistBalance(m.balance);
         return;
       case 'rooms':

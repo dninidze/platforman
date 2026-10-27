@@ -50,7 +50,8 @@ describe('round timeline (fake clock)', () => {
     expect(h.room.phase).toBe('ended');
     const end = h.of('roundEnd').at(-1)!;
     expect(end.jackpotTile).toBe(h.safeTile(3));
-    expect(end.survivorsPaid).toEqual([{ nickname: 'rider', amount: 100_000 }]);
+    expect(end.survivorsPaid).toEqual([{ nickname: 'ri***r', amount: 100_000 }]); // public lists are masked
+    expect(h.audit.rounds[0].players[0].nickname).toBe('rider'); // the audit log keeps the real name
     expect(end.emptiedAtStage).toBeNull();
     expect(await h.wallet.getBalance('rider')).toBe(balBefore + 100_000);
     expect(h.audit.rounds[0].players[0]).toMatchObject({ outcome: 'survived', stage: 3, k: 99, payout: 100_000 });

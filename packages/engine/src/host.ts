@@ -24,7 +24,7 @@ import { MockWallet } from './wallet';
  * gateway could wrap the same host later without changing the client.
  */
 
-const NICK_RE = /^[A-Za-z0-9_-]{1,16}$/;
+const PLAYER_ID_RE = /^[A-Za-z0-9:_.@-]{1,64}$/;
 /** "Simulate busy server" off: one room for everyone (tile capacity still caps seated players at 9,900). */
 const SINGLE_ROOM_CAP = Number.MAX_SAFE_INTEGER;
 
@@ -264,14 +264,15 @@ export class LocalHost {
 
     switch (msg.t) {
       case 'join': {
-        const nickname = String(msg.nickname ?? '').trim();
-        if (!NICK_RE.test(nickname)) return this.err(conn, 'BAD_REQUEST', 'nickname: 1-16 letters, digits, _ or -', msg.rid);
+        const playerId = String(msg.playerId ?? '');
+        const nickname = String(msg.displayName ?? '').trim().slice(0, 32);
+        if (!PLAYER_ID_RE.test(playerId) || playerId.startsWith('bot:')) return this.err(conn, 'BAD_REQUEST', 'invalid playerId', msg.rid);
+        if (!nickname) return this.err(conn, 'BAD_REQUEST', 'missing displayName', msg.rid);
         if (msg.currency && msg.currency !== this.config.currency) return this.err(conn, 'BAD_REQUEST', `currency ${msg.currency} not offered`, msg.rid);
-        const playerId = `p:${nickname.toLowerCase()}`;
         if (conn.playerId && conn.playerId !== playerId) return this.err(conn, 'BAD_REQUEST', 'already joined', msg.rid);
         const old = this.players.get(playerId);
         if (old && old !== conn) {
-          this.send(old, { t: 'error', code: 'BAD_REQUEST', message: 'This nickname connected from another tab.' });
+          this.send(old, { t: 'error', code: 'BAD_REQUEST', message: 'This player connected from another tab.' });
           old.playerId = null;
         }
         // A balance persisted by the page seeds the play-money wallet once per host lifetime.
@@ -280,7 +281,7 @@ export class LocalHost {
         this.players.set(playerId, conn);
         const room = this.manager.join(playerId, nickname, this.config.currency);
         const balance = await this.wallet.getBalance(playerId, this.config.currency);
-        this.send(conn, { t: 'welcome', playerId, nickname, roomId: room.id, balance, config: publicConfig(this.config), rooms: this.manager.list() });
+        this.send(conn, { t: 'welcome', playerId, displayName: nickname, roomId: room.id, balance, config: publicConfig(this.config), rooms: this.manager.list() });
         this.watch(conn, room);
         this.send(conn, room.youFor(playerId, balance));
         return;

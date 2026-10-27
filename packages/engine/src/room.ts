@@ -9,6 +9,7 @@ import {
   payout,
   STAGE_REMOVALS,
   countsChecksum,
+  maskName,
   type BroadcastMessage,
   type ClientSeedProvider,
   type Clock,
@@ -305,7 +306,7 @@ export class Room {
       played: core.played.map((s) => [...s]),
       jackpotTile: jackpot,
       emptiedAtStage: core.emptiedAtStage,
-      survivorsPaid: survivors.map((p) => ({ nickname: this.nick(p.id), amount: p.payout })),
+      survivorsPaid: survivors.map((p) => ({ nickname: maskName(this.nick(p.id)), amount: p.payout })),
       phaseEndsAt: this.phaseEndsAt,
       serverTime: at,
     });
@@ -458,7 +459,8 @@ export class Room {
   private paid(p: RoundPlayer, at: number): void {
     this.resolveAudit(p, at);
     this.feedDirty = true;
-    this.topCashouts.push({ nickname: this.nick(p.id), amount: p.payout, multiplier: p.multiplier100! / 100 });
+    // Public lists only ever carry masked names ("Sw***7").
+    this.topCashouts.push({ nickname: maskName(this.nick(p.id)), amount: p.payout, multiplier: p.multiplier100! / 100 });
     this.topCashouts.sort((a, b) => b.amount - a.amount);
     if (this.topCashouts.length > 20) this.topCashouts.length = 20;
     const kind = p.outcome === 'survived' ? 'jackpot' : 'win';

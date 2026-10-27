@@ -5,3 +5,4 @@ export * from './clock';
 export * from './protocol';
 export * from './engine';
 export * from './fairnessWebCrypto';
+export * from './session';

@@ -1,5 +1,17 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import { STAGE_REMOVALS, formatMoney, payout } from '@p3/shared';
+import {
+  DEFAULT_CURRENCY,
+  DemoSessionProvider,
+  GAME_TITLE,
+  STAGE_REMOVALS,
+  chooseSessionProvider,
+  formatMoney,
+  maskName,
+  parseLaunchParams,
+  payout,
+  stageName,
+  type KeyValueStore,
+} from '@p3/shared';
 import EngineWorker from './engine.worker?worker&inline';
 import { FairnessModal } from './Fairness';
 import { GameClient, store, type GameState } from './net';
@@ -7,6 +19,16 @@ import { SettingsPanel, StressOverlay } from './Stress';
 import { InProcessTransport, WebSocketTransport, WorkerTransport, type Transport } from './transport';
 
 const params = new URLSearchParams(location.search);
+document.title = GAME_TITLE;
+
+// Identity comes from the launch URL (aggregator token) or a stored demo identity: never a name prompt.
+const launch = parseLaunchParams(location.search);
+const browserStore: KeyValueStore = {
+  getItem: (k) => localStorage.getItem(k),
+  setItem: (k, v) => localStorage.setItem(k, v),
+};
+const sessionProvider = chooseSessionProvider(launch, browserStore);
+let currency = launch.currency ?? DEFAULT_CURRENCY;
 let engineOnMainThread = params.get('engine') === 'main' || typeof Worker === 'undefined';
 
 /**
@@ -25,25 +47,37 @@ function makeTransport(): Transport {
           engineOnMainThread = true;
           client.reconnect();
         },
+        { currency },
       );
     } catch {
       engineOnMainThread = true;
     }
   }
-  return new InProcessTransport(import('@p3/engine').then((m) => new m.LocalHost()));
+  return new InProcessTransport(import('@p3/engine').then((m) => new m.LocalHost({ config: { currency } })));
 }
 
 const client = new GameClient(makeTransport);
-client.connect();
-// For the headless checks: which side of which boundary the engine runs on.
+// For the headless checks: which side of which boundary the engine runs on, and who we are.
 (window as unknown as { __p3engine: () => string }).__p3engine = () => client.state.transport;
-// Restore the page's saved settings once the engine is up.
-{
-  const bots = store.get('p3.bots');
-  const busy = store.get('p3.busy');
-  client.updateSettings({ ...(bots !== null ? { bots: Number(bots) } : {}), ...(busy !== null ? { busyServer: busy === '1' } : {}) });
+(window as unknown as { __p3session: () => unknown }).__p3session = () => client.state.session;
+void sessionProvider.start(launch).then(
+  (session) => {
+    currency = session.currency;
+    client.start(session);
+    // Restore the page's saved settings once the engine is up.
+    const bots = store.get('p3.bots');
+    const busy = store.get('p3.busy');
+    client.updateSettings({ ...(bots !== null ? { bots: Number(bots) } : {}), ...(busy !== null ? { busyServer: busy === '1' } : {}) });
+  },
+  (e) => client.toast(`Could not start the session: ${String((e as Error)?.message ?? e)}`),
+);
+
+/** Settings → "New demo identity": regenerate name and id, then restart the page as that player. */
+function newDemoIdentity() {
+  if (sessionProvider instanceof DemoSessionProvider) sessionProvider.newIdentity();
+  location.reload();
 }
-// A hot reload re-runs this module; close the old client so it cannot rejoin under the same nickname.
+// A hot reload re-runs this module; close the old client so it cannot rejoin as the same player.
 import.meta.hot?.dispose(() => client.close());
 
 const CURRENCY_SYMBOL: Record<string, string> = { EUR: '€', USD: '$', GBP: '£' };
@@ -68,7 +102,7 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [overlay, setOverlay] = useState(() => store.get('p3.overlay') === '1' || params.has('perf'));
 
-  if (!s.joined) return <JoinScreen connected={s.connected} />;
+  if (!s.joined) return <Splash />;
   const sym = CURRENCY_SYMBOL[s.config?.currency ?? ''] ?? '';
   const spectating = s.watching !== null && s.watching !== s.homeRoom;
 
@@ -79,9 +113,10 @@ export function App() {
           <span className="logo" aria-hidden>
             ▦
           </span>
-          Platform 3
+          {GAME_TITLE}
         </div>
         <div className="hstats">
+          <Stat label={s.session?.mode === 'real' ? 'Player' : 'Player (demo)'} value={s.session?.displayName ?? '–'} />
           <Stat label="Balance" value={`${sym}${formatMoney(s.balance)}`} strong />
           <Stat label="Room" value={s.watching ?? '–'} />
           <Stat label="Round" value={s.round?.roundId.split('#')[1] ?? '–'} />
@@ -111,6 +146,7 @@ export function App() {
           {!spectating && <BetPanel s={s} sym={sym} />}
         </section>
         <aside className="side">
+          <HowToPlay />
           <LiveFeed s={s} sym={sym} />
           <History s={s} />
           <Rooms s={s} />
@@ -125,7 +161,16 @@ export function App() {
         ))}
       </div>
       {fairOpen && <FairnessModal s={s} client={client} onClose={() => setFairOpen(false)} />}
-      {settingsOpen && <SettingsPanel s={s} client={client} overlay={overlay} setOverlay={setOverlay} onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && (
+        <SettingsPanel
+          s={s}
+          client={client}
+          overlay={overlay}
+          setOverlay={setOverlay}
+          onNewIdentity={s.session?.provider === 'demo' ? newDemoIdentity : undefined}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
       {overlay && <StressOverlay s={s} client={client} />}
     </div>
   );
@@ -140,37 +185,27 @@ function Stat({ label, value, strong }: { label: string; value: string; strong?:
   );
 }
 
-function JoinScreen({ connected }: { connected: boolean }) {
-  const [nick, setNick] = useState(() => {
-    try {
-      return localStorage.getItem('p3.nickname') ?? '';
-    } catch {
-      return '';
-    }
-  });
-  const valid = /^[A-Za-z0-9_-]{1,16}$/.test(nick);
+function Splash() {
   return (
     <div className="join">
-      <form
-        className="join-card"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (valid) client.join(nick);
-        }}
-      >
-        <h1>Platform 3</h1>
-        <p className="muted">
-          Pick a tile. Tiles go one by one. The multiplier climbs after every Gone tile. Cash out before yours goes, or ride
-          three platforms to 10,000x.
-        </p>
-        <label htmlFor="nick">Nickname</label>
-        <input id="nick" value={nick} maxLength={16} autoFocus onChange={(e) => setNick(e.target.value)} placeholder="e.g. tilehopper" />
-        <button className="btn primary" disabled={!valid || !connected}>
-          {connected ? 'Play with demo credits' : 'Connecting…'}
-        </button>
-        <p className="muted small">Play money only. New nicknames get 1,000 demo credits.</p>
-      </form>
+      <div className="join-card" aria-live="polite">
+        <h1>{GAME_TITLE}</h1>
+        <p className="muted">Starting the game engine…</p>
+      </div>
     </div>
+  );
+}
+
+function HowToPlay() {
+  return (
+    <details className="panel help">
+      <summary>How to play {GAME_TITLE}</summary>
+      <p className="muted small">
+        Pick a tile and bet while betting is open. Tiles go Gone one by one and the multiplier climbs after every Gone tile. Cash
+        out before your tile goes, or survive all three stages (the board comes back after {stageName(1)} and {stageName(2)}) to
+        win 10,000x on the last tile standing. Play money only.
+      </p>
+    </details>
   );
 }
 
@@ -190,7 +225,7 @@ function MultiplierBar({ s }: { s: GameState }) {
     r.phase === 'betting'
       ? `Betting closes in ${secs?.toFixed(1)}s`
       : r.phase === 'intermission'
-        ? `Resurrection – next platform in ${secs?.toFixed(1)}s`
+        ? `Resurrection – ${stageName(r.stage + 1)} in ${secs?.toFixed(1)}s`
         : r.phase === 'ended'
           ? `Next round in ${secs?.toFixed(1)}s`
           : r.fast
@@ -200,10 +235,10 @@ function MultiplierBar({ s }: { s: GameState }) {
               : 'Tiles going…';
   return (
     <div className={`mbar phase-${r.phase}`}>
-      <div className="stages" aria-label={`Platform ${r.stage} of 3`}>
+      <div className="stages" aria-label={`${stageName(r.stage)} of 3`}>
         {[1, 2, 3].map((n) => (
           <span key={n} className={`stage-pill ${n === r.stage ? 'on' : n < r.stage ? 'done' : ''}`}>
-            Platform {n}
+            {stageName(n)}
           </span>
         ))}
       </div>
@@ -282,7 +317,7 @@ function Board({ s, spectating }: { s: GameState; spectating: boolean }) {
       {r.phase === 'intermission' && (
         <div className="overlay">
           <div className="overlay-title">Resurrection</div>
-          <div>All tiles are back. Platform {r.stage + 1} starts soon.</div>
+          <div>All tiles are back. {stageName(r.stage + 1)} starts soon.</div>
           <Countdown at={r.phaseEndsAt} />
         </div>
       )}
@@ -308,7 +343,7 @@ function RoundOverOverlay({ s }: { s: GameState }) {
       <div className="overlay-title">Round over</div>
       {last && last.roundId === r.roundId && (
         <div>
-          {last.emptiedAtStage ? `No survivors at platform ${last.emptiedAtStage}.` : `${last.survivorsPaid.length} survivor(s) paid 10,000x!`} 10,000x tile was #
+          {last.emptiedAtStage ? `No survivors at ${stageName(last.emptiedAtStage)}.` : `${last.survivorsPaid.length} survivor(s) paid 10,000x!`} 10,000x tile was #
           {last.jackpotTile + 1}.
         </div>
       )}
@@ -416,6 +451,10 @@ function BetPanel({ s, sym }: { s: GameState; sym: string }) {
 
 function LiveFeed({ s, sym }: { s: GameState; sym: string }) {
   const f = s.feed;
+  const you = s.you && s.feed && s.you.roundId === s.feed.roundId && s.you.state === 'cashedOut' ? s.you : null;
+  const youRow = you && s.session
+    ? (f?.topCashouts ?? []).findIndex((c) => c.nickname === maskName(s.session!.displayName) && c.amount === you.payout && c.multiplier === you.multiplier)
+    : -1;
   return (
     <div className="panel">
       <h2>Live</h2>
@@ -439,8 +478,8 @@ function LiveFeed({ s, sym }: { s: GameState; sym: string }) {
       </div>
       <ol className="feed">
         {(f?.topCashouts ?? []).slice(0, 8).map((c, i) => (
-          <li key={i}>
-            <span className="nick">{c.nickname}</span>
+          <li key={i} className={i === youRow ? 'you' : undefined}>
+            <span className="nick">{i === youRow ? `You (${c.nickname})` : c.nickname}</span>
             <span>{c.multiplier.toFixed(2)}x</span>
             <span className="amt">
               {sym}
@@ -464,7 +503,7 @@ function History({ s }: { s: GameState }) {
             <span className="muted">#{h.roundId.split('#')[1]}</span>
             <span>10,000x tile #{h.jackpotTile + 1}</span>
             <span className={h.emptiedAtStage ? 'muted' : 'win'}>
-              {h.emptiedAtStage ? `no survivors at P${h.emptiedAtStage}` : `${h.survivors} won 10,000x`}
+              {h.emptiedAtStage ? `no survivors at ${stageName(h.emptiedAtStage)}` : `${h.survivors} won 10,000x`}
             </span>
           </li>
         ))}

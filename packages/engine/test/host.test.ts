@@ -1,4 +1,4 @@
-import { FakeClock, countsChecksum, decodeGoneMask, type ServerMessage } from '@p3/shared';
+import { DISPLAY_NAME_RE, FakeClock, countsChecksum, decodeGoneMask, type ServerMessage } from '@p3/shared';
 import { describe, expect, it } from 'vitest';
 import { LocalHost } from '../src/host';
 import { checkRecord } from '../src/verifyLog';
@@ -58,8 +58,8 @@ describe('LocalHost (in-page engine)', () => {
     const h = setup({ bots: 9_900 });
     const a = h.client();
     const b = h.client();
-    a.ep.receive({ t: 'join', nickname: 'alice' });
-    b.ep.receive({ t: 'join', nickname: 'bob' });
+    a.ep.receive({ t: 'join', playerId: 'p:alice', displayName: 'alice' });
+    b.ep.receive({ t: 'join', playerId: 'p:bob', displayName: 'bob' });
     await flush();
     const room = h.host.manager.get('EUR-1')!;
     expect(room.members.size).toBe(9_902);
@@ -78,12 +78,17 @@ describe('LocalHost (in-page engine)', () => {
     const feed = a.of('liveFeed').at(-1)!;
     expect(feed.totals.players).toBeGreaterThan(9_000);
     expect(feed.totals.cashedOut).toBeGreaterThan(0);
+    // Every name in every public list is masked; bot names come from the player name generator.
+    const names = a.of('liveFeed').flatMap((f) => f.topCashouts.map((c) => c.nickname));
+    expect(names.length).toBeGreaterThan(0);
+    for (const n of names) expect(n).toMatch(/^[A-Z][a-z]\*\*\*\d$/);
+    for (const b of [...room.members.values()].filter((m) => m.playerId.startsWith('bot:'))) expect(b.nickname).toMatch(DISPLAY_NAME_RE);
   }, 120_000);
 
   it('seeds a persisted balance once and resets it on request', async () => {
     const h = setup();
     const c = h.client();
-    c.ep.receive({ t: 'join', nickname: 'saver', balance: 4_321 });
+    c.ep.receive({ t: 'join', playerId: 'p:saver', displayName: 'saver', balance: 4_321 });
     await flush();
     expect(c.of('welcome')[0].balance).toBe(4_321);
     c.ep.receive({ t: 'resetBalance' });
@@ -92,7 +97,7 @@ describe('LocalHost (in-page engine)', () => {
     expect(await h.host.wallet.getBalance('p:saver')).toBe(100_000);
     // A second join in the same host lifetime does not overwrite the live balance.
     const c2 = h.client();
-    c2.ep.receive({ t: 'join', nickname: 'saver', balance: 1 });
+    c2.ep.receive({ t: 'join', playerId: 'p:saver', displayName: 'saver', balance: 1 });
     await flush();
     expect(c2.of('welcome')[0].balance).toBe(100_000);
   });
@@ -100,7 +105,7 @@ describe('LocalHost (in-page engine)', () => {
   it('"simulate busy server" opens more rooms once bots pass roomSoftCap; off puts everyone back in one', async () => {
     const h = setup({ bots: 2_500 });
     const c = h.client();
-    c.ep.receive({ t: 'join', nickname: 'me' });
+    c.ep.receive({ t: 'join', playerId: 'p:me', displayName: 'me' });
     await flush();
     expect(h.host.manager.list().map((r) => r.players)).toEqual([2_501]);
     c.ep.receive({ t: 'settings', busyServer: true, roomSoftCap: 2_000 });
@@ -132,7 +137,7 @@ describe('LocalHost (in-page engine)', () => {
   it('logs rounds that verify, and serves them by id and as JSONL', async () => {
     const h = setup({ bots: 200 });
     const c = h.client();
-    c.ep.receive({ t: 'join', nickname: 'auditor' });
+    c.ep.receive({ t: 'join', playerId: 'p:auditor', displayName: 'auditor' });
     await h.run(200_000, 100);
     expect(h.host.audit.rounds.length).toBeGreaterThan(0);
     for (const rec of h.host.audit.rounds) expect(checkRecord(rec)).toEqual([]);
@@ -155,7 +160,7 @@ describe('LocalHost (in-page engine)', () => {
     c.ep.receive({ t: 'cashout' });
     await flush();
     expect(c.of('error')[0]).toMatchObject({ code: 'NOT_JOINED' });
-    c.ep.receive({ t: 'join', nickname: 'mover' });
+    c.ep.receive({ t: 'join', playerId: 'p:mover', displayName: 'mover' });
     await flush();
     c.ep.receive({ t: 'bet', amount: 100, tileId: 0 });
     await flush();
@@ -174,5 +179,25 @@ describe('LocalHost (in-page engine)', () => {
     expect(s.bots).toBe(100);
     expect(s.tickLateness.n).toBeGreaterThan(0);
     expect(s.tickLateness.max).toBe(0); // fake clock: ticks fire exactly on time
+  });
+});
+
+describe('LocalHost identity', () => {
+  it('joins with a provider-issued identity, rejects malformed or bot ids, and honours the host currency', async () => {
+    const clock = new FakeClock(0);
+    const host = new LocalHost({ clock, settings: { bots: 0 }, config: { currency: 'USD' }, statsMs: 0 });
+    const msgs: ServerMessage[] = [];
+    const ep = host.connect((m) => msgs.push(m));
+    ep.receive({ t: 'join', playerId: 'bot:1', displayName: 'Imposter' });
+    ep.receive({ t: 'join', playerId: 'has spaces', displayName: 'X' });
+    ep.receive({ t: 'join', playerId: 'demo:abc', displayName: 'SwiftFalcon27', currency: 'EUR' });
+    await flush();
+    expect(msgs.filter((m) => m.t === 'error').map((m) => m.t === 'error' && m.message)).toEqual(['invalid playerId', 'invalid playerId', 'currency EUR not offered']);
+    ep.receive({ t: 'join', playerId: 'demo:abc', displayName: 'SwiftFalcon27', currency: 'USD' });
+    await flush();
+    const w = msgs.find((m) => m.t === 'welcome');
+    expect(w).toMatchObject({ playerId: 'demo:abc', displayName: 'SwiftFalcon27', config: { currency: 'USD' } });
+    expect(host.manager.roomOf('demo:abc')!.currency).toBe('USD');
+    host.shutdown();
   });
 });

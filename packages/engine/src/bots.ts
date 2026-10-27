@@ -1,4 +1,4 @@
-import { STAGE_REMOVALS, TILE_COUNT, type BroadcastMessage, type Clock, type GameConfig, type Stage } from '@p3/shared';
+import { STAGE_REMOVALS, TILE_COUNT, generateDisplayName, type BroadcastMessage, type Clock, type GameConfig, type Stage } from '@p3/shared';
 import type { Room } from './room';
 import type { RoomManager } from './roomManager';
 
@@ -29,12 +29,14 @@ export const TILE_WEIGHTS: readonly number[] = (() => {
   return w;
 })();
 
-const SYL = ['ka', 'zu', 'mi', 'ro', 'ta', 'ne', 'lo', 'vi', 'sa', 'do', 'ri', 'ko', 'ba', 'yu', 'fe', 'no'];
+/** Bots use the players' name generator (adjective + noun + 2 digits), seeded by bot index. */
 export function botNickname(i: number): string {
-  const a = SYL[i % 16];
-  const b = SYL[Math.floor(i / 16) % 16];
-  const c = SYL[Math.floor(i / 256) % 16];
-  return `${a[0].toUpperCase()}${a.slice(1)}${b}${c}${i % 97}`;
+  let x = (i + 1) * 0x9e3779b1;
+  return generateDisplayName(() => {
+    x = Math.imul(x ^ (x >>> 15), 0x2c1b3c6d);
+    x ^= x >>> 12;
+    return (x >>> 0) / 2 ** 32;
+  });
 }
 
 export interface BotDeps {

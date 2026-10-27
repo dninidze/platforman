@@ -1,3 +1,9 @@
+/** User-visible game title (spec §0.2). */
+export const GAME_TITLE = 'Last Tile Standing';
+/** Label for the three stages: "Stage 1 / Stage 2 / Stage 3". */
+export const STAGE_LABEL = 'Stage';
+export const stageName = (stage: number) => `${STAGE_LABEL} ${stage}`;
+
 export const TILE_COUNT = 100;
 export const GRID_SIZE = 10;
 export const STAGE_COUNT = 3;
