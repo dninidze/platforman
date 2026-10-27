@@ -107,7 +107,7 @@ export interface StressResult {
   bots: number;
   rounds: number;
   seconds: number;
-  fps: { avg: number; min: number; p5: number };
+  fps: { avg: number; min: number; p5: number; series: number[] };
   engineTickLatenessMs: { p50: number; p95: number; max: number; min: number; ticks: number };
   uiDeliveryMs: { p50: number; p95: number; max: number; min: number };
   sync: { ticksChecked: number; checksumMismatches: number };
@@ -197,7 +197,7 @@ export function StressOverlay({ s, client }: { s: GameState; client: GameClient 
       bots: s.hostStats?.bots ?? 0,
       rounds: client.metrics.rounds - r.rounds0,
       seconds: (performance.now() - r.start) / 1000,
-      fps: { avg: r.fps.reduce((a, b) => a + b, 0) / Math.max(1, r.fps.length), min: Math.min(...r.fps), p5: q(r.fps, 0.05) },
+      fps: { avg: r.fps.reduce((a, b) => a + b, 0) / Math.max(1, r.fps.length), min: Math.min(...r.fps), p5: q(r.fps, 0.05), series: r.fps.map(Math.round) },
       engineTickLatenessMs: { p50: q(r.enginePerWindow, 0.5), p95: q(r.engine, 0.95), max: Math.max(...r.engine), min: Math.min(...r.engineMin), ticks: r.engineTicks },
       uiDeliveryMs: { p50: q(delivery, 0.5), p95: q(delivery, 0.95), max: Math.max(...delivery), min: Math.min(...delivery) },
       sync: { ticksChecked: client.metrics.ticks - r.ticks0, checksumMismatches: client.metrics.checksumMismatches - r.mism0 },
