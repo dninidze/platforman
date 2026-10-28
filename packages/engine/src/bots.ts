@@ -172,7 +172,7 @@ export class BotDriver {
   /** Weighted pick among tiles that are alive and not full in the bot's current (public) view. */
   private pickTile(room: Room): number | null {
     const { counts, gone } = room.core;
-    const cap = this.deps.config.tileCapacity;
+    const cap = room.core.limits.tileCapacity;
     let total = 0;
     for (let t = 0; t < TILE_COUNT; t++) if (!gone[t] && counts[t] < cap) total += TILE_WEIGHTS[t];
     if (total === 0) return null;

@@ -52,31 +52,28 @@ const name2 = await playerName();
 check('reload keeps the same name and id', name2 === name1 && (await b.evaluate('window.__p3session().playerId')) === env.session.playerId, name2);
 
 // ---- full round
-await b.waitFor(`(() => { const m = (document.querySelector('.phase-label')?.textContent || '').match(/Betting closes in ([\\d.]+)s/); return m && Number(m[1]) > 4; })()`, 240_000, 'betting phase');
+await b.waitFor(`(() => { const m = (document.querySelector('.msgbox')?.textContent || '').match(/Betting closes in ([\\d.]+) s/); return m && Number(m[1]) > 4; })()`, 240_000, 'betting phase');
 const roundId = await b.evaluate(`window.__p3round = document.querySelector('.stat-value') && [...document.querySelectorAll('.stat')].find((s) => s.querySelector('.stat-label')?.textContent === 'Round')?.querySelector('.stat-value')?.textContent`);
 log(`betting open for round #${roundId}`);
-await b.evaluate(`(() => { const t = [...document.querySelectorAll('.board .tile')].find((x) => !x.disabled && /: \\d+ players/.test(x.getAttribute('aria-label')) && !x.classList.contains('full')); t.click(); return true; })()`);
+await b.evaluate(`(() => { const t = [...document.querySelectorAll('.board .tile')].find((x) => !x.disabled && /: \\d+ players/.test(x.getAttribute('aria-label')) && !x.classList.contains('band-full')); t.click(); return true; })()`);
 await sleep(200);
 await b.evaluate(`[...document.querySelectorAll('.betpanel button')].find((x) => x.textContent.startsWith('Bet '))?.click(), true`);
 await b.waitFor(`/Cancel bet/.test(document.querySelector('.betpanel')?.textContent || '')`, 5_000, 'bet accepted');
-await b.waitFor(`/Tiles going|finishing fast/.test(document.querySelector('.phase-label')?.textContent || '')`, 15_000, 'running');
+await b.waitFor(`/tiles going|finishing|first tile/i.test(document.querySelector('.msgbox')?.textContent || '')`, 15_000, 'running');
 await b.waitFor(`(() => { const x = [...document.querySelectorAll('.betpanel button')].find((y) => y.textContent.startsWith('Cash out €')); if (x && !x.disabled) { x.click(); return true; } return /went Gone|Cashed out/.test(document.querySelector('.betpanel')?.textContent || ''); })()`, 15_000, 'cashout or loss');
 await sleep(800);
 const outcome = await b.evaluate(`document.querySelector('.betpanel')?.textContent`);
 log(`outcome: ${outcome}`);
-const feed = await b.evaluate(`[...document.querySelectorAll('.feed li')].map((li) => li.querySelector('.nick')?.textContent).filter(Boolean)`);
+const feed = await b.evaluate(`[...document.querySelectorAll('.plist li .nick')].map((n) => n.textContent)`);
 const masked = feed.every((n) => /^(You \()?[A-Za-z][A-Za-z]\*\*\*\w\)?$/.test(n));
-check('live feed shows only masked names', feed.length > 0 && masked, feed.slice(0, 4).join(', '));
-// The feed lists the top 8 cashouts by amount, so ours only appears when it is big enough.
-const amounts = await b.evaluate(`[...document.querySelectorAll('.feed li .amt')].map((a) => Number(a.textContent.replace(/[^\\d.]/g, '')))`);
-const mine = Number((outcome.match(/Cashed out: \D*([\d,.]+)/)?.[1] ?? 'NaN').replace(/,/g, ''));
-const shouldShow = Number.isFinite(mine) && (amounts.length < 8 || mine > Math.min(...amounts));
-if (shouldShow) check('own cashout highlighted as "You"', feed.some((n) => n.startsWith('You (')), feed.find((n) => n.startsWith('You (')) ?? 'none');
-else log(`(own cashout ${mine} is below the top-8 feed cut-off ${Math.min(...amounts)}; "You" highlight not applicable)`);
-await b.waitFor(`/Next round in/.test(document.querySelector('.phase-label')?.textContent || '')`, 300_000, 'round end');
-const end = await b.evaluate(`({ overlay: document.querySelector('.overlay.ended')?.textContent, history: document.querySelector('.history li')?.textContent })`);
+check('players list shows only masked names', feed.length > 1 && masked, feed.slice(0, 4).join(', '));
+check('own row first in the players list, marked "You"', /^You \(/.test(feed[0] ?? ''), feed[0]);
+const bands = await b.evaluate(`[...new Set([...document.querySelectorAll('.board .tile')].map((t) => [...t.classList].find((c) => c.startsWith('band-'))))]`);
+check('tiles carry traffic-light bands', bands.length > 0 && bands.every((x) => /^band-(green|yellow|full|gone)$/.test(x)), bands.join(','));
+await b.waitFor(`/Round over/.test(document.querySelector('.msgbox')?.textContent || '')`, 300_000, 'round end');
+const end = await b.evaluate(`({ message: document.querySelector('.msgbox')?.textContent, covered: !!document.querySelector('.board .overlay'), history: document.querySelector('.history li')?.textContent })`);
 log(`round over: ${JSON.stringify(end)}`);
-check('round played to the end', !!end.overlay && !!end.history);
+check('round played to the end; result in the message box, board not covered', /Round over/.test(end.message ?? '') && !end.covered && !!end.history, end.message);
 check('round history uses the stage label', /Stage \d|won 10,000x/.test(end.history ?? ''), end.history);
 
 await b.evaluate(`document.querySelector('[aria-label="Provably fair: verify rounds"]').click(), true`);

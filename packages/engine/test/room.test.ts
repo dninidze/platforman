@@ -1,4 +1,4 @@
-import { MULTIPLIERS_100, countsChecksum, verifyRound } from '@p3/shared';
+import { MULTIPLIERS_100, countsChecksum, tileBand, tileCapsFor, verifyRound } from '@p3/shared';
 import { describe, expect, it } from 'vitest';
 import { flush, setupRoom } from './helpers';
 
@@ -103,8 +103,19 @@ describe('action ordering (§3.4)', () => {
     expect(h.room.cashout('a')).toEqual({ ok: false, reason: 'PHASE' });
   });
 
-  it('moves are MOVE_LOCKED in the last moveLockMs before each tick; cashouts never are', async () => {
+  it('default: no move lock, a move 1 ms before a removal is accepted and applied before it (CHANGES_3 §1)', async () => {
     const h = setupRoom();
+    h.join('a');
+    await h.room.bet('a', 100, h.safeTile(1, 0));
+    h.clock.advanceTo(BET_END + 1000 - 1);
+    expect(h.room.move('a', h.seqs()[0][1]).ok).toBe(true); // onto the tile that goes at +1000
+    h.clock.advanceTo(BET_END + 1000);
+    expect(h.room.core.players.get('a')!.state).toBe('lost');
+    expect(h.audit.rejections.some((r) => r.code === 'MOVE_LOCKED')).toBe(false);
+  });
+
+  it('an operator can still enable the lock: moves are MOVE_LOCKED in the last moveLockMs; cashouts never are', async () => {
+    const h = setupRoom({ moveLockMs: 100 });
     h.join('a', 'b');
     await h.room.bet('a', 100, h.safeTile(1, 0));
     await h.room.bet('b', 100, h.safeTile(1, 1));
@@ -327,5 +338,72 @@ describe('fairness & audit', () => {
     expect(snap.played[0]).toEqual(h.seqs()[0].slice(0, 7));
     expect(snap.played[1]).toEqual([]);
     expect(JSON.stringify(snap)).not.toContain(h.seqs()[0].slice(7, 12).join(','));
+  });
+});
+
+describe('dynamic tile capacity (CHANGES_3 §2)', () => {
+  const caps = (n: number) => tileCapsFor(n, 20, 99);
+  it('cap = min(99, max(1, ceil(20% × players in room))), green up to half of it', () => {
+    expect(caps(1)).toEqual({ playerBase: 1, tileCap: 1, greenMax: 0 });
+    expect(caps(100)).toEqual({ playerBase: 100, tileCap: 20, greenMax: 10 });
+    expect(caps(301)).toEqual({ playerBase: 301, tileCap: 61, greenMax: 30 });
+    expect(caps(9_901)).toEqual({ playerBase: 9_901, tileCap: 99, greenMax: 49 });
+    expect(caps(0).tileCap).toBe(1);
+    expect(tileCapsFor(500, 0, 99).tileCap).toBe(99); // pct 0 = fixed cap
+    const c = caps(100);
+    expect([0, 10, 11, 19, 20].map((n) => tileBand(n, false, c))).toEqual(['green', 'green', 'yellow', 'yellow', 'full']);
+    expect(tileBand(5, true, c)).toBe('gone');
+  });
+
+  it('with 100 players in the room a tile is Full at 20: the 21st bet and a move onto it are rejected', async () => {
+    const h = setupRoom({ tileCapPct: 20 });
+    const ids = Array.from({ length: 100 }, (_, i) => `p${i}`);
+    h.join(...ids); // all present before the first bet
+    expect(h.room.tileCaps).toEqual({ playerBase: 100, tileCap: 20, greenMax: 10 });
+    const t = h.safeTile(1, 0);
+    for (let i = 0; i < 20; i++) expect((await h.room.bet(ids[i], 10, t)).ok).toBe(true);
+    expect(await h.room.bet(ids[20], 10, t)).toEqual({ ok: false, reason: 'TILE_FULL' });
+    expect((await h.room.bet(ids[20], 10, h.safeTile(1, 1))).ok).toBe(true);
+    h.clock.advanceTo(BET_END + 700);
+    expect(h.room.move(ids[20], t)).toEqual({ ok: false, reason: 'TILE_FULL' });
+    expect(h.room.snapshot().caps.tileCap).toBe(20);
+  });
+
+  it('the base counts players who join before the first bet, then freezes for the round', async () => {
+    const h = setupRoom({ tileCapPct: 20 });
+    expect(h.room.tileCaps.playerBase).toBe(0); // room opened before anyone arrived
+    h.join(...Array.from({ length: 10 }, (_, i) => `p${i}`));
+    expect(h.room.tileCaps).toMatchObject({ playerBase: 10, tileCap: 2 });
+    await h.room.bet('p0', 10, 3);
+    h.join(...Array.from({ length: 90 }, (_, i) => `late${i}`));
+    expect(h.room.tileCaps).toMatchObject({ playerBase: 10, tileCap: 2 });
+    h.clock.advance(10_000 + 91 * 500 + 3_000 + 90 * 500 + 3_000 + 99 * 500 + 5_000);
+    h.clock.advance(200_000);
+    expect(h.room.tileCaps).toMatchObject({ playerBase: 100, tileCap: 20 }); // next round: everyone counts
+  });
+
+  it('capacity changes before the first bet reach clients in an occupancy message', () => {
+    const h = setupRoom({ tileCapPct: 20 });
+    h.join('a', 'b', 'c', 'd', 'e', 'f');
+    h.clock.advance(100);
+    expect(h.of('occupancy').at(-1)!.caps).toMatchObject({ playerBase: 6, tileCap: 2, greenMax: 1 });
+  });
+});
+
+describe('public players list', () => {
+  it('lists at most 50 bets with masked names, cash-outs first, and counts the rest', async () => {
+    const h = setupRoom();
+    const ids = Array.from({ length: 80 }, (_, i) => `player${i}`);
+    h.join(...ids);
+    for (const [i, id] of ids.entries()) await h.room.bet(id, 10 + i, h.safeTile(1, i % 5));
+    h.clock.advanceTo(BET_END + 500);
+    h.room.cashout('player3');
+    const feed = h.room.liveFeed();
+    expect(feed.bets).toHaveLength(50);
+    expect(feed.moreBets).toBe(30);
+    expect(feed.bets[0]).toMatchObject({ nickname: 'pl***3', state: 'cashedOut', bet: 13, multiplier: 1.01 });
+    expect(feed.bets[1]).toMatchObject({ state: 'alive', bet: 89 });
+    expect(feed.stats).toMatchObject({ inRoom: 80, staked: ids.reduce((a, _, i) => a + 10 + i, 0), paid: 13, biggestWin: 13, biggestMultiplier: 1.01 });
+    for (const b of feed.bets) expect(b.nickname).toMatch(/^pl\*\*\*\d$/);
   });
 });

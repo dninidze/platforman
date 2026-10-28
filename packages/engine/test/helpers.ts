@@ -14,7 +14,8 @@ export const SEED = 'c0ffee'.padEnd(64, '0');
 
 export function setupRoom(over: Partial<GameConfig> = {}) {
   const clock = new FakeClock(0);
-  const config: GameConfig = { ...DEFAULT_CONFIG, ...over };
+  // Legacy tests assume the fixed 99-per-tile cap; dynamic-capacity tests pass tileCapPct explicitly.
+  const config: GameConfig = { ...DEFAULT_CONFIG, tileCapPct: 0, ...over };
   const wallet = new MockWallet(config.startingBalance);
   const audit = new MemoryAuditLog();
   const broadcasts: BroadcastMessage[] = [];

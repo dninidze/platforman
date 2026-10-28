@@ -9,6 +9,8 @@ import {
   payout,
   STAGE_REMOVALS,
   countsChecksum,
+  tileCapsFor,
+  type TileCaps,
   maskName,
   type BroadcastMessage,
   type ClientSeedProvider,
@@ -61,6 +63,27 @@ export interface RoomDeps {
 }
 
 const CREDIT_RETRY_MS = [100, 500, 2_000, 5_000, 10_000];
+/** Rows in the public players list. */
+const LIST_LIMIT = 50;
+
+/** The `n` largest by `key`, without sorting the whole group. */
+function topBy<T>(items: T[], key: (x: T) => number, n: number): T[] {
+  if (n <= 0) return [];
+  if (items.length <= n * 4) return [...items].sort((a, b) => key(b) - key(a)).slice(0, n);
+  const out: T[] = [];
+  for (const it of items) {
+    if (out.length < n) {
+      out.push(it);
+      if (out.length === n) out.sort((a, b) => key(b) - key(a));
+    } else if (key(it) > key(out[n - 1])) {
+      let i = n - 1;
+      while (i > 0 && key(out[i - 1]) < key(it)) i--;
+      out.splice(i, 0, it);
+      out.pop();
+    }
+  }
+  return out;
+}
 
 /**
  * One room = one authoritative round timeline. Single-threaded: every inbound action first runs
@@ -93,6 +116,8 @@ export class Room {
   private betSeq = new Map<string, number>();
   private pendingDebits = new Map<string, { aborted: boolean }>();
   private dirty = new Set<number>();
+  private caps: TileCaps | null = null;
+  private capsDirty = false;
   private feedDirty = true;
   private topCashouts: LiveFeedMsg['topCashouts'] = [];
   private timer: TimerHandle | null = null;
@@ -110,6 +135,11 @@ export class Room {
   }
   get phase() {
     return this.core.phase;
+  }
+
+  /** This round's dynamic tile capacity (CHANGES_3 §2). */
+  get tileCaps(): TileCaps {
+    return { ...this.caps! };
   }
 
   start(): void {
@@ -130,6 +160,18 @@ export class Room {
 
   addMember(m: Member): void {
     this.members.set(m.playerId, m);
+    // Players who arrive before the round's first bet still count towards this round's capacity base.
+    if (this.core && this.core.phase === 'betting' && this.core.players.size === 0) this.updateCaps();
+  }
+
+  /** CHANGES_3 §2: capacity from the players in the room; frozen from the round's first bet. */
+  private updateCaps(): void {
+    const { tileCapPct, tileCapacity } = this.config;
+    const next = tileCapsFor(this.members.size, tileCapPct, tileCapacity);
+    if (this.caps && next.tileCap === this.caps.tileCap && next.playerBase === this.caps.playerBase) return;
+    this.caps = next;
+    this.core.limits.tileCapacity = next.tileCap;
+    this.capsDirty = true;
   }
 
   /** Leaving keeps any live bet on the board (it rides until it resolves). */
@@ -190,6 +232,9 @@ export class Room {
     this.permutations = derivePermutations(this.serverSeed, this.clientSeed);
     const { tileCapacity, minBet, maxBet, maxWinPerBet } = this.config;
     this.core = new RoundCore(this.permutations, { tileCapacity, minBet, maxBet, maxWinPerBet });
+    this.caps = null;
+    this.updateCaps();
+    this.capsDirty = false; // the snapshot below carries them
     this.createdAt = at;
     this.runningAt = null;
     this.fast = false;
@@ -418,6 +463,7 @@ export class Room {
     if (r.from !== tileId) {
       this.dirty.add(r.from);
       this.dirty.add(tileId);
+      this.feedDirty = true; // the public players list shows tiles
       const a = this.audits.get(playerId);
       if (a) {
         if (this.core.phase === 'betting') a.betTile = tileId;
@@ -552,18 +598,50 @@ export class Room {
   }
 
   flushOccupancy(): void {
-    if (this.closed || this.dirty.size === 0) return;
-    this.broadcast({ t: 'occupancy', seq: 0, countsDelta: this.takeDelta() });
+    if (this.closed || (this.dirty.size === 0 && !this.capsDirty)) return;
+    const caps = this.capsDirty && this.caps ? { caps: { ...this.caps } } : {};
+    this.capsDirty = false;
+    this.broadcast({ t: 'occupancy', seq: 0, countsDelta: this.takeDelta(), ...caps });
   }
 
   liveFeed(): LiveFeedMsg {
     let alive = 0;
     let cashedOut = 0;
     let lost = 0;
+    let staked = 0;
+    let paid = 0;
+    let biggestWin = 0;
+    let biggestMultiplier = 0;
+    const cashed: RoundPlayer[] = [];
+    const live: RoundPlayer[] = [];
+    const gone: RoundPlayer[] = [];
     for (const p of this.core.players.values()) {
-      if (p.state === 'alive' || p.state === 'betting') alive++;
-      else if (p.state === 'cashedOut') cashedOut++;
-      else if (p.state === 'lost') lost++;
+      staked += p.bet;
+      if (p.state === 'alive' || p.state === 'betting') {
+        alive++;
+        live.push(p);
+      } else if (p.state === 'cashedOut') {
+        cashedOut++;
+        cashed.push(p);
+        paid += p.payout;
+        if (p.payout > biggestWin) {
+          biggestWin = p.payout;
+          biggestMultiplier = p.multiplier100! / 100;
+        }
+      } else if (p.state === 'lost') {
+        lost++;
+        gone.push(p);
+      }
+    }
+    // Public list: at most LIST_LIMIT rows, masked names (BUILD_SPEC §8: never list every bet).
+    const listed: RoundPlayer[] = [];
+    for (const [group, key] of [
+      [cashed, (p: RoundPlayer) => p.payout],
+      [live, (p: RoundPlayer) => p.bet],
+      [gone, (p: RoundPlayer) => p.bet],
+    ] as const) {
+      if (listed.length >= LIST_LIMIT) break;
+      listed.push(...topBy(group, key, LIST_LIMIT - listed.length));
     }
     return {
       t: 'liveFeed',
@@ -571,6 +649,16 @@ export class Room {
       roundId: this.roundId,
       topCashouts: this.topCashouts.slice(0, 20),
       totals: { players: this.core.players.size, alive, cashedOut, lost },
+      stats: { inRoom: this.members.size, staked, paid, biggestWin, biggestMultiplier },
+      bets: listed.map((p) => ({
+        nickname: maskName(this.nick(p.id)),
+        bet: p.bet,
+        tile: p.tile,
+        state: p.state,
+        multiplier: p.multiplier100 === null ? null : p.multiplier100 / 100,
+        payout: p.payout,
+      })),
+      moreBets: this.core.players.size - listed.length,
     };
   }
 
@@ -600,6 +688,7 @@ export class Room {
       phaseEndsAt: this.core.phase === 'running' ? this.nextTickAt : this.phaseEndsAt,
       serverTime: now,
       fast: this.fast,
+      caps: { ...this.caps! },
     };
   }
 

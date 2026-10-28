@@ -87,7 +87,7 @@ dist/             last-tile-standing.html (committed); data/ holds local run out
   `RoomManager` shards players over rooms by `roomSoftCap`; the page shows the player's room and lists the
   others.
 * `BotDriver` adds simulated players as ordinary room members acting through the same `Room` API (same
-  limits, `MOVE_LOCKED`, `TILE_FULL`). They see only public state (counts, Gone tiles, phase) and their own
+  limits and `TILE_FULL`). They see only public state (counts, Gone tiles, phase) and their own
   bet, never the sequence. They favour popular tiles (corners, centre, 7/13/21/33/77/88/100), bet
   €0.10–€20, react 40–320 ms after a tick, hop tiles, and cash out at varied targets (80% in Stage 1, 15% in
   Stage 2, 5% in Stage 3, 1% ride for 10,000x). Bot names come from the same generator as demo players.
@@ -96,6 +96,26 @@ dist/             last-tile-standing.html (committed); data/ holds local run out
 * The engine keeps the last 300 round records (seed hash, revealed seed, client seed, sequences, played
   tiles, timestamped ticks, each player's bet/moves/outcome/payout) and the last 500 rejected actions with
   reasons. Settings → Download round log exports them as JSONL.
+
+## Tiles, capacity and layout (CHANGES_3)
+
+* **Dynamic capacity.** When a round opens, `playerBase` is the number of players in the room (bettors or
+  not). Players who arrive before the round's first bet are counted too; after that it is frozen. A tile is
+  **Full** at `tileCap = min(99, max(1, ceil(20% × playerBase)))` and rejects further bets and moves
+  (`TILE_FULL`). Colours: **green** up to `floor(tileCap / 2)` players, **yellow** above that, **red "Full"** at
+  the cap. For 100 players that is green 0–10, yellow 11–19, Full at 20. The values travel in `roundState.caps`
+  (and in `occupancy.caps` if they change before the first bet). Config: `tileCapPct` (20; 0 = fixed cap).
+  Survival odds and RTP do not depend on occupancy.
+* **Layout.** Left: round stats and the participating players (up to 50 masked rows from the engine, yours
+  first as "You", "+ N more"). Centre: the multiplier box (as wide as the grid, stage tabs inside,
+  bronze/silver/gold frame for Stage 1/2/3), the grid, a one-line message box (betting countdown, resurrection,
+  fast finish, round result), and the bet panel. Right: past games (placeholder content), rooms, how to play.
+  Narrow screens stack centre, left, right.
+* **Resurrection** no longer covers the board. Surviving tiles keep their counts and glow, returning tiles
+  rise back in, survivors can move or cash out, and the message box announces it.
+* **Look.** Graphite theme. Near-square tiles with a top-lit gradient, a glossy diagonal reflection and a dark
+  bottom lip. Traffic-light colours (light green / yellow / red). Tile numbers are bold with a black outline and
+  a transparent fill. Your tile has a thick dark frame plus a "YOU" badge, so colour is never the only cue.
 
 ## Player identity (§0.1)
 
@@ -177,9 +197,9 @@ parameters are parsed from the URL: `token`, `operator`, `currency`, `lang`, `mo
    paid is the previous stage's final value.
 2. **Resurrection moment.** All tiles come back at the *start* of intermission, so survivors can move to
    any tile during the "Resurrection" countdown. "Next" then shows the next platform's first multiplier.
-3. **Move lock.** A move is `MOVE_LOCKED` when the next tick is less than `moveLockMs` away. It applies to
-   every RUNNING tick, fast mode included. Betting and intermission have no imminent removal, so they are
-   never locked. Cashouts are never locked.
+3. **No move lock** (`spec/CHANGES_3.md` §1). Moves are accepted at any time while running or in
+   intermission; a move that arrives before a tick's timestamp is applied before that tick. `moveLockMs` now
+   defaults to 0. An operator can set it above 0 to bring back `MOVE_LOCKED` in the last N ms before a removal.
 4. **Fast finish.** When the board empties during RUNNING, the next tick happens at
    `min(scheduled tick, now + fastTickMs)`, then every 200 ms to the end of that stage, then ENDED. If the
    board empties during intermission, the round ends immediately. A round with no bets runs stage 1 at
@@ -219,14 +239,15 @@ parameters are parsed from the URL: `token`, `operator`, `currency`, `lang`, `mo
 | 1 | Engine and UI in sync under 9,900 bots at ≥ 50 FPS, ticks within ±50 ms | Tick checksums (UI vs engine) in `host.test.ts` with 9,900 bots and two connections; in-browser stress run, see `LOADTEST.md` |
 | 2 | Three stages end to end, survivors paid 10,000x (subject to cap) | `room.test.ts` "all three stages end to end", engine tests |
 | 3 | Cashout pays `floor(bet × table[stage][k-1])` | `room.test.ts` (every k of stage 1, odd bets), `math.test.ts` (every table value vs BigInt) |
-| 4 | 99 per tile; 100th rejected at bet and move | `room.test.ts`, `engine.test.ts` |
+| 4 | Tile Full at the round's cap (20% of players in room, max 99); next entrant rejected at bet and move | `room.test.ts` (dynamic cap for 1/100/301/9,901 players, fixed 99), `engine.test.ts` |
 | 5 | Fast finish at 5/s in precommitted order, then ENDED | `room.test.ts` "fast finish" (4 cases) |
-| 6 | `MOVE_LOCKED`, `TOO_LATE`, no double pay | `room.test.ts`, `wallet.test.ts` (idempotency, retries with same txId) |
+| 6 | No move lock by default (optional `MOVE_LOCKED`), `TOO_LATE`, no double pay | `room.test.ts`, `wallet.test.ts` (idempotency, retries with same txId) |
 | 7 | Verifier matches every sequence for any logged round | Fairness modal (Web Crypto), `host.test.ts` (`checkRecord` on every logged round), `npm run verify` |
 | 8 | `npm run sim` passes | 1M rounds in 33 s, 282 strategies (every cash-out point, random walk with moves, ride to 10,000x), worst \|z\| 3.09, none beyond 4σ |
 | 9 | In-page stress result recorded | `LOADTEST.md` |
 | 10 | New room past `roomSoftCap` | `roomManager.test.ts`, `host.test.ts` "simulate busy server" |
-| 11 | `npm test` green | 79 tests in 8 files |
+| 11 | `npm test` green | 85 tests in 8 files |
 | new | Plays a full round from disk with networking off | `npm run check:offline` |
 | §0.1 | No prompt, generated name shown; reload keeps it; `?token=abc&currency=USD` uses the aggregator provider and shows USD; new demo identity; masked lists | `session.test.ts`, `host.test.ts`, `room.test.ts`, and `npm run check:offline` in the browser |
+| CR3 | No lock; dynamic cap + colour bands; three-column layout; uncovered resurrection; metal frames | `room.test.ts`, `npm run check:offline` (players list, bands, message box), visual check in the browser at 1440 and 375 px |
 | §0.2 | `GAME_TITLE` in `<title>`, header, help text, fairness modal, README; output `dist/last-tile-standing.html`; "Stage 1/2/3" in tabs, intermission and history | `npm run build` (title injected from the constant), `npm run check:offline` |

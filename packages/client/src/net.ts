@@ -3,6 +3,7 @@ import {
   decodeGoneMask,
   type HostSettings,
   type PlayerSession,
+  type TileCaps,
   type HostStatsMsg,
   type RoundRecordMsg,
   type ClientMessage,
@@ -57,6 +58,10 @@ export interface RoundView {
   clientSeed: string;
   phaseEndsAt: number | null;
   fast: boolean;
+  /** This round's dynamic tile capacity (CHANGES_3 §2). */
+  caps: TileCaps;
+  /** During intermission: tiles that survived the stage just played (for the "survived" glow). */
+  survived: boolean[] | null;
 }
 
 export interface HistoryEntry {
@@ -119,7 +124,6 @@ export interface ClientMetrics {
 const REASON_TEXT: Partial<Record<ErrorCode, string>> = {
   TILE_FULL: 'Tile is full',
   TILE_GONE: 'That tile is Gone',
-  MOVE_LOCKED: 'Locked: a tile is about to go',
   TOO_LATE: 'Too late',
   BET_LIMIT: 'Bet outside limits',
   INSUFFICIENT_FUNDS: 'Not enough balance',
@@ -348,6 +352,8 @@ export class GameClient {
             clientSeed: m.clientSeed,
             phaseEndsAt: m.phaseEndsAt,
             fast: m.fast,
+            caps: m.caps,
+            survived: m.phase === 'intermission' ? m.tiles.map((c) => c > 0) : null,
           },
           ...(newRound && m.phase === 'betting' ? { lostAt: null } : {}),
         });
@@ -383,6 +389,7 @@ export class GameClient {
             played,
             fast: m.fast,
             phaseEndsAt: null,
+            survived: null,
           },
           lastGone: { tile: m.tileGone, key: m.seq },
           ...(mine ? { lostAt: Date.now() } : {}),
@@ -391,7 +398,7 @@ export class GameClient {
       }
       case 'occupancy':
         if (!this.checkSeq(m.seq) || !s.round) return;
-        this.set({ round: { ...s.round, counts: this.applyDelta(s.round.counts, m.countsDelta) } });
+        this.set({ round: { ...s.round, counts: this.applyDelta(s.round.counts, m.countsDelta), ...(m.caps ? { caps: m.caps } : {}) } });
         return;
       case 'stageEnd':
         if (!this.checkSeq(m.seq) || !s.round) return;
@@ -403,6 +410,7 @@ export class GameClient {
             phaseEndsAt: m.phaseEndsAt,
             nextMultiplier: m.nextMultiplier,
             gone: new Array<boolean>(100).fill(false),
+            survived: s.round.gone.map((g) => !g),
           },
         });
         return;

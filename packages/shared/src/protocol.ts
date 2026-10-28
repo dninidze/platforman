@@ -1,4 +1,4 @@
-import type { GameConfig, Stage } from './constants';
+import type { GameConfig, Stage, TileCaps } from './constants';
 
 export type ErrorCode =
   | 'TILE_FULL'
@@ -52,6 +52,7 @@ export interface PublicConfig extends Pick<
   | 'resultsMs'
   | 'moveLockMs'
   | 'tileCapacity'
+  | 'tileCapPct'
   | 'minBet'
   | 'maxBet'
   | 'maxWinPerBet'
@@ -95,6 +96,8 @@ export interface RoundStateMsg {
   phaseEndsAt: number | null;
   serverTime: number;
   fast: boolean;
+  /** This round's dynamic tile capacity (CHANGES_3 §2). */
+  caps: TileCaps;
 }
 
 export interface TickMsg {
@@ -117,6 +120,8 @@ export interface OccupancyMsg {
   t: 'occupancy';
   seq: number;
   countsDelta: CountsDelta;
+  /** Present when the round's capacity changed (only before the first bet of a round). */
+  caps?: TileCaps;
 }
 
 export interface StageEndMsg {
@@ -204,6 +209,21 @@ export interface LiveFeedMsg {
   roundId: string;
   topCashouts: { nickname: string; amount: number; multiplier: number }[];
   totals: { players: number; alive: number; cashedOut: number; lost: number };
+  /** Room members (bettors or not) and money totals for the round, minor units. */
+  stats: { inRoom: number; staked: number; paid: number; biggestWin: number; biggestMultiplier: number };
+  /** Up to 50 participating players (masked names): cash-outs by amount, then live bets by size, then losses. */
+  bets: PublicBet[];
+  /** Bets not listed in `bets`. */
+  moreBets: number;
+}
+
+export interface PublicBet {
+  nickname: string;
+  bet: number;
+  tile: number;
+  state: PlayerState;
+  multiplier: number | null;
+  payout: number;
 }
 
 export interface RoomsMsg {

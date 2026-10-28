@@ -18,8 +18,15 @@ export interface GameConfig {
   bettingMs: number;
   intermissionMs: number;
   resultsMs: number;
+  /** Move lock before each removal (BUILD_SPEC §3.4). 0 = disabled (CHANGES_3 §1). */
   moveLockMs: number;
+  /** Absolute maximum players per tile. */
   tileCapacity: number;
+  /**
+   * Dynamic capacity (CHANGES_3 §2): a tile is Full at this percentage of the players in the room when the
+   * round opens, never above tileCapacity. 0 disables it (fixed tileCapacity).
+   */
+  tileCapPct: number;
   roomSoftCap: number;
   /** Money values are integer minor units (cents). */
   minBet: number;
@@ -44,8 +51,9 @@ export const DEFAULT_CONFIG: GameConfig = {
   bettingMs: 10_000,
   intermissionMs: 3_000,
   resultsMs: 4_000,
-  moveLockMs: 100,
+  moveLockMs: 0,
   tileCapacity: 99,
+  tileCapPct: 20,
   roomSoftCap: 2_000,
   minBet: 10,
   maxBet: 10_000,
@@ -57,3 +65,25 @@ export const DEFAULT_CONFIG: GameConfig = {
   emptyRoundsBeforeClose: 3,
   movesPerSecond: 5,
 };
+
+export interface TileCaps {
+  /** Players counted for this round's thresholds. */
+  playerBase: number;
+  /** A tile with this many players is Full. */
+  tileCap: number;
+  /** Up to this many players a tile is green; above it yellow; at tileCap red/Full. */
+  greenMax: number;
+}
+
+/** CHANGES_3 §2: tileCap = min(hardCap, max(1, ceil(pct% × base))), greenMax = floor(tileCap / 2). */
+export function tileCapsFor(playerBase: number, pct: number, hardCap: number): TileCaps {
+  const tileCap = pct > 0 ? Math.min(hardCap, Math.max(1, Math.ceil((playerBase * pct) / 100))) : hardCap;
+  return { playerBase, tileCap, greenMax: Math.floor(tileCap / 2) };
+}
+
+export type TileBand = 'green' | 'yellow' | 'full' | 'gone';
+export function tileBand(count: number, gone: boolean, caps: Pick<TileCaps, 'tileCap' | 'greenMax'>): TileBand {
+  if (gone) return 'gone';
+  if (count >= caps.tileCap) return 'full';
+  return count <= caps.greenMax ? 'green' : 'yellow';
+}

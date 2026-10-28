@@ -10,6 +10,7 @@ import {
   parseLaunchParams,
   payout,
   stageName,
+  tileBand,
   type KeyValueStore,
 } from '@p3/shared';
 import EngineWorker from './engine.worker?worker&inline';
@@ -140,16 +141,19 @@ export function App() {
       )}
 
       <main className="layout">
-        <section className="board-col">
-          <MultiplierBar s={s} />
+        <section className="center-col" aria-label="Game">
+          <MultiplierBox s={s} />
           <Board s={s} spectating={spectating} />
+          <MessageBox s={s} sym={sym} />
           {!spectating && <BetPanel s={s} sym={sym} />}
         </section>
-        <aside className="side">
-          <HowToPlay />
-          <LiveFeed s={s} sym={sym} />
+        <aside className="left-col" aria-label="Players and stats">
+          <PlayersPanel s={s} sym={sym} />
+        </aside>
+        <aside className="right-col" aria-label="Past games">
           <History s={s} />
           <Rooms s={s} />
+          <HowToPlay />
         </aside>
       </main>
 
@@ -203,41 +207,33 @@ function HowToPlay() {
       <p className="muted small">
         Pick a tile and bet while betting is open. Tiles go Gone one by one and the multiplier climbs after every Gone tile. Cash
         out before your tile goes, or survive all three stages (the board comes back after {stageName(1)} and {stageName(2)}) to
-        win 10,000x on the last tile standing. Play money only.
+        win 10,000x on the last tile standing. Tiles are green while few players stand on them, yellow as they fill up and red
+        when Full (a share of the players in the room). Play money only.
       </p>
     </details>
   );
 }
 
-function MultiplierBar({ s }: { s: GameState }) {
-  const now = useNow();
+const METAL = ['bronze', 'silver', 'gold'] as const;
+
+/** Multiplier box: same width as the grid, stage tabs inside, framed bronze / silver / gold by stage. */
+function MultiplierBox({ s }: { s: GameState }) {
   const r = s.round;
-  if (!r) return <div className="mbar" />;
+  if (!r) return <div className="mbox" />;
   const resurrected = r.phase === 'intermission';
-  const stageLen = STAGE_REMOVALS[resurrected ? r.stage : r.stage - 1];
+  // During intermission the next stage is about to start: show its metal and tab.
+  const shownStage = resurrected ? Math.min(3, r.stage + 1) : r.stage;
+  const stageLen = STAGE_REMOVALS[shownStage - 1];
   const removed = resurrected ? 0 : r.removed;
   const left = 100 - removed;
   const stageOver = !resurrected && removed >= stageLen;
   const survive = !stageOver && r.phase !== 'ended' ? (left - 1) / left : null;
   const inPlay = s.you?.roundId === r.roundId && (s.you.state === 'alive' || s.you.state === 'betting');
-  const secs = r.phaseEndsAt ? Math.max(0, (r.phaseEndsAt - now) / 1000) : null;
-  const phaseLabel =
-    r.phase === 'betting'
-      ? `Betting closes in ${secs?.toFixed(1)}s`
-      : r.phase === 'intermission'
-        ? `Resurrection – ${stageName(r.stage + 1)} in ${secs?.toFixed(1)}s`
-        : r.phase === 'ended'
-          ? `Next round in ${secs?.toFixed(1)}s`
-          : r.fast
-            ? 'No players left – finishing fast'
-            : r.removed === 0 && r.stage === 1
-              ? 'First tile about to go'
-              : 'Tiles going…';
   return (
-    <div className={`mbar phase-${r.phase}`}>
-      <div className="stages" aria-label={`${stageName(r.stage)} of 3`}>
+    <div className={`mbox metal-${METAL[shownStage - 1]} phase-${r.phase}`}>
+      <div className="stages" role="tablist" aria-label={`${stageName(shownStage)} of 3`}>
         {[1, 2, 3].map((n) => (
-          <span key={n} className={`stage-pill ${n === r.stage ? 'on' : n < r.stage ? 'done' : ''}`}>
+          <span key={n} role="tab" aria-selected={n === shownStage} className={`stage-pill metal-${METAL[n - 1]} ${n === shownStage ? 'on' : n < shownStage ? 'done' : ''}`}>
             {stageName(n)}
           </span>
         ))}
@@ -258,7 +254,6 @@ function MultiplierBar({ s }: { s: GameState }) {
           </div>
         </div>
       </div>
-      <div className="phase-label">{phaseLabel}</div>
     </div>
   );
 }
@@ -268,7 +263,6 @@ function Board({ s, spectating }: { s: GameState; spectating: boolean }) {
   const [selected, setSelected] = useState<number | null>(null);
   const you = s.you && r && s.you.roundId === r.roundId ? s.you : null;
   const myTile = you && (you.state === 'alive' || you.state === 'betting') ? you.tileId : null;
-  const cap = s.config?.tileCapacity ?? 99;
   const lostFlash = s.lostAt !== null && Date.now() - s.lostAt < 1600;
   useEffect(() => {
     if (r?.phase === 'betting' && !you) return;
@@ -288,6 +282,7 @@ function Board({ s, spectating }: { s: GameState; spectating: boolean }) {
     }
   };
 
+  // No overlay ever covers the board: resurrection and results go to the message box below it.
   return (
     <div
       className={`board ${r.fast ? 'fast' : ''} ${r.phase === 'intermission' ? 'resurrect' : ''} ${lostFlash ? 'lost-shake' : ''}`}
@@ -296,65 +291,182 @@ function Board({ s, spectating }: { s: GameState; spectating: boolean }) {
     >
       {r.counts.map((count, t) => {
         const gone = r.gone[t];
-        const full = !gone && count >= cap;
+        const band = tileBand(count, gone, r.caps);
         const mine = t === myTile;
         const justGone = gone && s.lastGone?.tile === t;
-        const label = gone ? 'Gone' : full ? 'Full' : String(count);
-        const cls = ['tile', gone ? 'gone' : 'alive', full ? 'full' : '', mine ? 'mine' : '', selected === t ? 'selected' : '', justGone ? 'just-gone' : ''].join(' ');
+        const survived = r.phase === 'intermission' && r.survived?.[t] && count > 0;
+        const label = gone ? 'Gone' : band === 'full' ? 'Full' : String(count);
+        const cls = ['tile', `band-${band}`, mine ? 'mine' : '', selected === t ? 'selected' : '', justGone ? 'just-gone' : '', survived ? 'survived' : '']
+          .filter(Boolean)
+          .join(' ');
         return (
           <button
             key={`${r.stage}-${t}`}
             className={cls}
             onClick={() => onTile(t)}
             disabled={gone}
-            aria-label={`Tile ${t + 1}: ${gone ? 'Gone' : full ? 'Full' : `${count} players`}${mine ? ', your tile' : ''}`}
+            aria-label={`Tile ${t + 1}: ${gone ? 'Gone' : band === 'full' ? `Full (${count} players)` : `${count} players`}${mine ? ', your tile' : ''}`}
           >
             {mine && <span className="you-badge">YOU</span>}
             <span className="tile-count">{label}</span>
           </button>
         );
       })}
-      {r.phase === 'intermission' && (
-        <div className="overlay">
-          <div className="overlay-title">Resurrection</div>
-          <div>All tiles are back. {stageName(r.stage + 1)} starts soon.</div>
-          <Countdown at={r.phaseEndsAt} />
-        </div>
-      )}
-      {r.phase === 'ended' && <RoundOverOverlay s={s} />}
-      {lostFlash && <div className="lost-banner">Your tile is Gone</div>}
     </div>
   );
 }
 
-function Countdown({ at }: { at: number | null }) {
+/** One line of game messages under the grid (replaces the old overlays). */
+function MessageBox({ s, sym }: { s: GameState; sym: string }) {
   const now = useNow();
-  if (!at) return null;
-  return <div className="countdown">{Math.max(0, (at - now) / 1000).toFixed(1)}s</div>;
+  const r = s.round;
+  if (!r) return <div className="msgbox" />;
+  const secs = r.phaseEndsAt ? Math.max(0, (r.phaseEndsAt - now) / 1000).toFixed(1) : null;
+  const you = s.you?.roundId === r.roundId ? s.you : null;
+  const lostRecently = s.lostAt !== null && now - (s.lostAt + s.offset) < 2500;
+  let kind = 'info';
+  let text: string;
+  if (r.phase === 'betting') {
+    text = `Betting closes in ${secs} s. Tap a tile, then bet. Tiles turn Full at ${r.caps.tileCap} players.`;
+  } else if (r.phase === 'intermission') {
+    const tiles = r.survived?.filter(Boolean).length ?? 0;
+    const players = r.counts.reduce((a, b) => a + b, 0);
+    kind = 'resurrect';
+    text = `Resurrection! ${tiles} tiles survived ${stageName(r.stage)} with ${players} player${players === 1 ? '' : 's'}. All tiles are back. ${
+      you?.state === 'alive' ? 'You can change tiles or cash out now. ' : ''
+    }${stageName(r.stage + 1)} starts in ${secs} s.`;
+  } else if (r.phase === 'ended') {
+    const last = s.revealed[0]?.roundId === r.roundId ? s.revealed[0] : null;
+    const result = last
+      ? last.emptiedAtStage
+        ? `No survivors at ${stageName(last.emptiedAtStage)}. 10,000x tile was #${last.jackpotTile + 1}.`
+        : `${last.survivorsPaid.length} player(s) won 10,000x on tile #${last.jackpotTile + 1}!`
+      : '';
+    const mine =
+      you?.state === 'cashedOut' ? ` You won ${sym}${formatMoney(you.payout)} at ${you.multiplier?.toFixed(2)}x.` : you?.state === 'lost' ? ' Your tile went Gone.' : '';
+    kind = you?.state === 'cashedOut' ? 'win' : 'info';
+    text = `Round over. ${result}${mine} Next round in ${secs} s.`;
+  } else if (lostRecently && you?.state === 'lost') {
+    kind = 'loss';
+    text = 'Your tile is Gone. Bet again next round.';
+  } else if (r.fast) {
+    text = 'No players left on the board, finishing the stage fast.';
+  } else if (r.removed === 0 && r.stage === 1) {
+    text = 'Betting closed. The first tile is about to go.';
+  } else {
+    text = `${stageName(r.stage)}: tiles going. ${you?.state === 'alive' ? 'Cash out any time, or move to another tile.' : ''}`;
+  }
+  return (
+    <div className={`msgbox msg-${kind}`} role="status" aria-live="polite">
+      {text}
+    </div>
+  );
 }
 
-function RoundOverOverlay({ s }: { s: GameState }) {
-  const last = s.revealed[0];
-  const r = s.round!;
-  const you = s.you?.roundId === r.roundId ? s.you : null;
-  const sym = CURRENCY_SYMBOL[s.config?.currency ?? ''] ?? '';
+/** Left column: round stats and the participating players (masked names; your row first). */
+function PlayersPanel({ s, sym }: { s: GameState; sym: string }) {
+  const f = s.feed && s.round && s.feed.roundId === s.round.roundId ? s.feed : null;
+  const r = s.round;
+  const you = s.you && r && s.you.roundId === r.roundId && s.you.state !== 'idle' ? s.you : null;
+  const myMask = s.session ? maskName(s.session.displayName) : '';
+  let skipped = false;
+  const others = (f?.bets ?? []).filter((b) => {
+    if (!skipped && you && b.nickname === myMask && b.bet === you.bet && b.tile === you.tileId) {
+      skipped = true;
+      return false;
+    }
+    return true;
+  });
+  const money = (v: number) => `${sym}${formatMoney(v)}`;
+  const row = (b: { bet: number; tile: number | null; state: string; multiplier: number | null; payout: number }) =>
+    b.state === 'cashedOut' ? (
+      <span className="win">
+        {b.multiplier?.toFixed(2)}x · {money(b.payout)}
+      </span>
+    ) : b.state === 'lost' ? (
+      <span className="loss">lost</span>
+    ) : (
+      <span className="muted">#{(b.tile ?? 0) + 1}</span>
+    );
   return (
-    <div className="overlay ended">
-      <div className="overlay-title">Round over</div>
-      {last && last.roundId === r.roundId && (
+    <div className="panel players">
+      <h2>Players</h2>
+      <div className="totals">
         <div>
-          {last.emptiedAtStage ? `No survivors at ${stageName(last.emptiedAtStage)}.` : `${last.survivorsPaid.length} survivor(s) paid 10,000x!`} 10,000x tile was #
-          {last.jackpotTile + 1}.
+          <b>{f?.stats.inRoom ?? 0}</b>
+          <span>in room</span>
         </div>
-      )}
-      {you && you.state === 'cashedOut' && (
-        <div className="win">
-          You won {sym}
-          {formatMoney(you.payout)} at {you.multiplier?.toFixed(2)}x
+        <div>
+          <b>{f?.totals.players ?? 0}</b>
+          <span>bets</span>
         </div>
-      )}
-      {you && you.state === 'lost' && <div className="loss">Your tile went Gone.</div>}
-      <Countdown at={r.phaseEndsAt} />
+        <div>
+          <b>{f?.totals.alive ?? 0}</b>
+          <span>alive</span>
+        </div>
+        <div>
+          <b>{f?.totals.cashedOut ?? 0}</b>
+          <span>cashed out</span>
+        </div>
+        <div>
+          <b>{f?.totals.lost ?? 0}</b>
+          <span>lost</span>
+        </div>
+      </div>
+      <dl className="kv stats">
+        <dt>Total bet</dt>
+        <dd>{money(f?.stats.staked ?? 0)}</dd>
+        <dt>Total won</dt>
+        <dd>{money(f?.stats.paid ?? 0)}</dd>
+        <dt>Biggest win</dt>
+        <dd>{f && f.stats.biggestWin > 0 ? `${money(f.stats.biggestWin)} (${f.stats.biggestMultiplier.toFixed(2)}x)` : '–'}</dd>
+        <dt>Tile Full at</dt>
+        <dd>{r ? `${r.caps.tileCap} players (20% of ${r.caps.playerBase} in room${r.caps.tileCap === 99 ? ', max 99' : ''})` : '–'}</dd>
+      </dl>
+      <ol className="plist">
+        <li className="phead">
+          <span>Player</span>
+          <span>Bet</span>
+          <span>Status</span>
+        </li>
+        {you && (
+          <li className="you">
+            <span className="nick">You ({myMask})</span>
+            <span>{money(you.bet)}</span>
+            {row({ bet: you.bet, tile: you.tileId, state: you.state, multiplier: you.multiplier, payout: you.payout })}
+          </li>
+        )}
+        {others.map((b, i) => (
+          <li key={i} className={`st-${b.state}`}>
+            <span className="nick">{b.nickname}</span>
+            <span>{money(b.bet)}</span>
+            {row(b)}
+          </li>
+        ))}
+        {f && f.moreBets > 0 && <li className="muted more">+ {f.moreBets.toLocaleString()} more</li>}
+        {(!f || f.bets.length === 0) && !you && <li className="muted">No bets yet</li>}
+      </ol>
+    </div>
+  );
+}
+
+/** Right column: past games (content to be defined by the product owner; placeholder for now). */
+function History({ s }: { s: GameState }) {
+  return (
+    <div className="panel">
+      <h2>Past games</h2>
+      <ul className="history">
+        {s.history.slice(0, 15).map((h) => (
+          <li key={h.roundId}>
+            <span className="muted">#{h.roundId.split('#')[1]}</span>
+            <span>10,000x tile #{h.jackpotTile + 1}</span>
+            <span className={h.emptiedAtStage ? 'muted' : 'win'}>
+              {h.emptiedAtStage ? `no survivors at ${stageName(h.emptiedAtStage)}` : `${h.survivors} won 10,000x`}
+            </span>
+          </li>
+        ))}
+        {s.history.length === 0 && <li className="muted">No rounds yet</li>}
+      </ul>
     </div>
   );
 }
@@ -445,70 +557,6 @@ function BetPanel({ s, sym }: { s: GameState; sym: string }) {
             ? 'Your tile went Gone. Bet again next round.'
             : 'Round in progress. Watch now, bet in the next round.'}
       </div>
-    </div>
-  );
-}
-
-function LiveFeed({ s, sym }: { s: GameState; sym: string }) {
-  const f = s.feed;
-  const you = s.you && s.feed && s.you.roundId === s.feed.roundId && s.you.state === 'cashedOut' ? s.you : null;
-  const youRow = you && s.session
-    ? (f?.topCashouts ?? []).findIndex((c) => c.nickname === maskName(s.session!.displayName) && c.amount === you.payout && c.multiplier === you.multiplier)
-    : -1;
-  return (
-    <div className="panel">
-      <h2>Live</h2>
-      <div className="totals">
-        <div>
-          <b>{f?.totals.players ?? 0}</b>
-          <span>players</span>
-        </div>
-        <div>
-          <b>{f?.totals.alive ?? 0}</b>
-          <span>alive</span>
-        </div>
-        <div>
-          <b>{f?.totals.cashedOut ?? 0}</b>
-          <span>cashed out</span>
-        </div>
-        <div>
-          <b>{f?.totals.lost ?? 0}</b>
-          <span>lost</span>
-        </div>
-      </div>
-      <ol className="feed">
-        {(f?.topCashouts ?? []).slice(0, 8).map((c, i) => (
-          <li key={i} className={i === youRow ? 'you' : undefined}>
-            <span className="nick">{i === youRow ? `You (${c.nickname})` : c.nickname}</span>
-            <span>{c.multiplier.toFixed(2)}x</span>
-            <span className="amt">
-              {sym}
-              {formatMoney(c.amount)}
-            </span>
-          </li>
-        ))}
-        {(!f || f.topCashouts.length === 0) && <li className="muted">No cashouts yet</li>}
-      </ol>
-    </div>
-  );
-}
-
-function History({ s }: { s: GameState }) {
-  return (
-    <div className="panel">
-      <h2>Recent rounds</h2>
-      <ul className="history">
-        {s.history.slice(0, 10).map((h) => (
-          <li key={h.roundId}>
-            <span className="muted">#{h.roundId.split('#')[1]}</span>
-            <span>10,000x tile #{h.jackpotTile + 1}</span>
-            <span className={h.emptiedAtStage ? 'muted' : 'win'}>
-              {h.emptiedAtStage ? `no survivors at ${stageName(h.emptiedAtStage)}` : `${h.survivors} won 10,000x`}
-            </span>
-          </li>
-        ))}
-        {s.history.length === 0 && <li className="muted">No rounds yet</li>}
-      </ul>
     </div>
   );
 }
