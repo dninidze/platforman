@@ -6,6 +6,6 @@ export function makeConfig(overrides: Partial<GameConfig> = {}): GameConfig {
 }
 
 export function publicConfig(c: GameConfig): PublicConfig {
-  const { tickMs, fastTickMs, bettingMs, intermissionMs, resultsMs, moveLockMs, tileCapacity, tileCapPct, minBet, maxBet, maxWinPerBet, currency } = c;
-  return { tickMs, fastTickMs, bettingMs, intermissionMs, resultsMs, moveLockMs, tileCapacity, tileCapPct, minBet, maxBet, maxWinPerBet, currency };
+  const { tickMs, fastTickMs, bettingMs, intermissionMs, resultsMs, moveLockMs, tileCapacity, tileCapPct, tileYellowPct, minBet, maxBet, maxWinPerBet, currency } = c;
+  return { tickMs, fastTickMs, bettingMs, intermissionMs, resultsMs, moveLockMs, tileCapacity, tileCapPct, tileYellowPct, minBet, maxBet, maxWinPerBet, currency };
 }

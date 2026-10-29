@@ -98,3 +98,15 @@ describe('payout', () => {
     expect(formatMoney(5)).toBe('0.05');
   });
 });
+
+describe('formatMultiplier (CHANGES_4 §1)', () => {
+  it('keeps two decimals below 100x and drops them from 100x', async () => {
+    const { formatMultiplier } = await import('../src');
+    expect(formatMultiplier(1)).toBe('1.00x');
+    expect(formatMultiplier(10.77)).toBe('10.77x');
+    expect(formatMultiplier(94.88)).toBe('94.88x');
+    expect(formatMultiplier(104.46)).toBe('104x');
+    expect(formatMultiplier(1440)).toBe('1,440x');
+    expect(formatMultiplier(10_000)).toBe('10,000x');
+  });
+});

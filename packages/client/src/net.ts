@@ -1,5 +1,6 @@
 import {
   countsChecksum,
+  formatMultiplier,
   decodeGoneMask,
   type HostSettings,
   type PlayerSession,
@@ -398,7 +399,7 @@ export class GameClient {
       }
       case 'occupancy':
         if (!this.checkSeq(m.seq) || !s.round) return;
-        this.set({ round: { ...s.round, counts: this.applyDelta(s.round.counts, m.countsDelta), ...(m.caps ? { caps: m.caps } : {}) } });
+        this.set({ round: { ...s.round, counts: this.applyDelta(s.round.counts, m.countsDelta) } });
         return;
       case 'stageEnd':
         if (!this.checkSeq(m.seq) || !s.round) return;
@@ -458,7 +459,7 @@ export class GameClient {
         return;
       case 'cashoutResult':
         if (!m.ok) this.toast(reasonText(m.reason));
-        else this.toast(`Cashed out ${m.multiplier?.toFixed(2)}x`, 'win');
+        else this.toast(`Cashed out ${formatMultiplier(m.multiplier ?? 0)}`, 'win');
         return;
       case 'error':
         this.toast(m.message || reasonText(m.code));

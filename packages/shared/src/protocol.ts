@@ -53,6 +53,7 @@ export interface PublicConfig extends Pick<
   | 'moveLockMs'
   | 'tileCapacity'
   | 'tileCapPct'
+  | 'tileYellowPct'
   | 'minBet'
   | 'maxBet'
   | 'maxWinPerBet'
@@ -96,7 +97,7 @@ export interface RoundStateMsg {
   phaseEndsAt: number | null;
   serverTime: number;
   fast: boolean;
-  /** This round's dynamic tile capacity (CHANGES_3 §2). */
+  /** Tile thresholds (CHANGES_4 §3): live during betting, frozen from the round start. */
   caps: TileCaps;
 }
 
@@ -120,8 +121,6 @@ export interface OccupancyMsg {
   t: 'occupancy';
   seq: number;
   countsDelta: CountsDelta;
-  /** Present when the round's capacity changed (only before the first bet of a round). */
-  caps?: TileCaps;
 }
 
 export interface StageEndMsg {

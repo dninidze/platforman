@@ -20,6 +20,7 @@ import {
   RoundCore,
   STAGE_REMOVALS,
   deriveSequences,
+  hardTileCap,
   getMultiplier,
   generateServerSeed,
   hashServerSeed,
@@ -43,7 +44,8 @@ interface Acc {
 function simulate(seed: string, from: number, to: number, rng: () => number): Acc {
   const sum = new Float64Array(N_STRAT);
   const sumSq = new Float64Array(N_STRAT);
-  const limits = { ...DEFAULT_CONFIG, maxWinPerBet: DEFAULT_CONFIG.maxWinPerBet };
+  // Same limits as a room: no fixed per-tile maximum (CHANGES_4 §3); the sim never moves onto locked tiles anyway.
+  const limits = { ...DEFAULT_CONFIG, tileCapacity: hardTileCap(DEFAULT_CONFIG.tileCapacity) };
   // Players to cash out after each (stage, k): index = stageOffset + k.
   const offset = [0, STAGE_REMOVALS[0], STAGE_REMOVALS[0] + STAGE_REMOVALS[1]];
   const ids = Array.from({ length: N_STRAT }, (_, i) => `s${i}`);

@@ -1,7 +1,7 @@
 /** User-visible game title (spec §0.2). */
 export const GAME_TITLE = 'Last Tile Standing';
-/** Label for the three stages: "Stage 1 / Stage 2 / Stage 3". */
-export const STAGE_LABEL = 'Stage';
+/** Label for the three stages: "Vol. 1 / Vol. 2 / Vol. 3" (CHANGES_4 §1). */
+export const STAGE_LABEL = 'Vol.';
 export const stageName = (stage: number) => `${STAGE_LABEL} ${stage}`;
 
 export const TILE_COUNT = 100;
@@ -20,13 +20,15 @@ export interface GameConfig {
   resultsMs: number;
   /** Move lock before each removal (BUILD_SPEC §3.4). 0 = disabled (CHANGES_3 §1). */
   moveLockMs: number;
-  /** Absolute maximum players per tile. */
+  /** Fixed maximum players per tile; 0 = no fixed maximum (CHANGES_4 §3 removed the old 99). */
   tileCapacity: number;
   /**
-   * Dynamic capacity (CHANGES_3 §2): a tile is Full at this percentage of the players in the room when the
-   * round opens, never above tileCapacity. 0 disables it (fixed tileCapacity).
+   * CHANGES_4 §3: when the round starts, a tile with this percentage of the bets (or more) is locked.
+   * 0 disables the dynamic lock (then only tileCapacity applies).
    */
   tileCapPct: number;
+  /** Tiles turn yellow from this percentage of the bets. */
+  tileYellowPct: number;
   roomSoftCap: number;
   /** Money values are integer minor units (cents). */
   minBet: number;
@@ -52,8 +54,9 @@ export const DEFAULT_CONFIG: GameConfig = {
   intermissionMs: 3_000,
   resultsMs: 4_000,
   moveLockMs: 0,
-  tileCapacity: 99,
-  tileCapPct: 20,
+  tileCapacity: 0,
+  tileCapPct: 10,
+  tileYellowPct: 5,
   roomSoftCap: 2_000,
   minBet: 10,
   maxBet: 10_000,
@@ -67,23 +70,34 @@ export const DEFAULT_CONFIG: GameConfig = {
 };
 
 export interface TileCaps {
-  /** Players counted for this round's thresholds. */
+  /** Players with a bet: live during betting, frozen when the round starts. */
   playerBase: number;
-  /** A tile with this many players is Full. */
+  /** A tile with this many players is locked (red). */
   tileCap: number;
-  /** Up to this many players a tile is green; above it yellow; at tileCap red/Full. */
-  greenMax: number;
+  /** From this many players a tile is yellow. */
+  yellowFrom: number;
+  /** True during betting: display only, nothing is locked yet. */
+  live: boolean;
 }
 
-/** CHANGES_3 §2: tileCap = min(hardCap, max(1, ceil(pct% × base))), greenMax = floor(tileCap / 2). */
-export function tileCapsFor(playerBase: number, pct: number, hardCap: number): TileCaps {
-  const tileCap = pct > 0 ? Math.min(hardCap, Math.max(1, Math.ceil((playerBase * pct) / 100))) : hardCap;
-  return { playerBase, tileCap, greenMax: Math.floor(tileCap / 2) };
+/** Hard per-tile maximum from config (0 = none). */
+export const hardTileCap = (tileCapacity: number) => (tileCapacity > 0 ? tileCapacity : Number.POSITIVE_INFINITY);
+
+/** CHANGES_4 §3: lock at max(1, ceil(capPct% × bets)), yellow from max(1, ceil(yellowPct% × bets)). */
+export function tileCapsFor(bets: number, capPct: number, yellowPct: number, live: boolean): TileCaps {
+  const tileCap = Math.max(1, Math.ceil((bets * capPct) / 100));
+  const yellowFrom = Math.min(tileCap, Math.max(1, Math.ceil((bets * yellowPct) / 100)));
+  return { playerBase: bets, tileCap, yellowFrom, live };
 }
 
 export type TileBand = 'green' | 'yellow' | 'full' | 'gone';
-export function tileBand(count: number, gone: boolean, caps: Pick<TileCaps, 'tileCap' | 'greenMax'>): TileBand {
+export function tileBand(count: number, gone: boolean, caps: Pick<TileCaps, 'tileCap' | 'yellowFrom'>): TileBand {
   if (gone) return 'gone';
   if (count >= caps.tileCap) return 'full';
-  return count <= caps.greenMax ? 'green' : 'yellow';
+  return count >= caps.yellowFrom ? 'yellow' : 'green';
+}
+
+/** Multiplier label: two decimals below 100x, whole numbers from 100x ("105x", "10,000x"). */
+export function formatMultiplier(m: number): string {
+  return m >= 100 ? `${Math.floor(m).toLocaleString('en-US')}x` : `${m.toFixed(2)}x`;
 }

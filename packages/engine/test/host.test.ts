@@ -69,12 +69,16 @@ describe('LocalHost (in-page engine)', () => {
     expect(ra.checked).toBeGreaterThan(90);
     expect(ra.mismatches).toBe(0);
     expect(rb.mismatches).toBe(0);
-    expect(ra.maxCount).toBeLessThanOrEqual(99);
+    expect(ra.maxCount).toBeGreaterThan(99); // CHANGES_4: no fixed maximum while betting
     // Both connections saw the same removals and multipliers.
     const ticks = (msgs: ServerMessage[]) => msgs.filter((m) => m.t === 'tick').map((m) => m.t === 'tick' && [m.tileGone, m.multiplier]);
     expect(ticks(a.msgs)).toEqual(ticks(b.msgs));
     // Bots really played: thousands of bets, cashouts, rejections for full tiles.
-    expect(h.host.audit.rejectCounts.TILE_FULL ?? 0).toBeGreaterThan(0);
+    // Thresholds froze at round start from the bets on the board (10% lock, 5% yellow).
+    const frozen = a.of('roundState').find((m) => m.phase === 'running')!.caps;
+    expect(frozen.live).toBe(false);
+    expect(frozen.tileCap).toBe(Math.ceil(frozen.playerBase / 10));
+    expect(frozen.playerBase).toBeGreaterThan(9_000);
     const feed = a.of('liveFeed').at(-1)!;
     expect(feed.totals.players).toBeGreaterThan(9_000);
     expect(feed.totals.cashedOut).toBeGreaterThan(0);

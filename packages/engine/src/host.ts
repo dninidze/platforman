@@ -25,7 +25,7 @@ import { MockWallet } from './wallet';
  */
 
 const PLAYER_ID_RE = /^[A-Za-z0-9:_.@-]{1,64}$/;
-/** "Simulate busy server" off: one room for everyone (tile capacity still caps seated players at 9,900). */
+/** "Simulate busy server" off: one room for everyone. */
 const SINGLE_ROOM_CAP = Number.MAX_SAFE_INTEGER;
 
 class Bucket {

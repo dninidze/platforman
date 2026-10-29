@@ -5,7 +5,7 @@
 
 A multiplayer crash game. 100 tiles (10×10). Players bet on a tile, tiles go **Gone** one by one every
 0.5 s in a precommitted, provably fair order, and the multiplier climbs after every removal. There are
-three stages (labelled by `STAGE_LABEL`: "Stage 1/2/3"): the board is resurrected after 91 and then 90 removals, and anyone still standing
+three stages (labelled by `STAGE_LABEL`: "Vol. 1/2/3"): the board is resurrected after 91 and then 90 removals, and anyone still standing
 on the last tile of stage 3 is paid 10,000x. Play money only.
 
 Built from `../spec/BUILD_SPEC.md` (including **§0: one self-contained HTML file**, **§0.1: identity from the
@@ -89,7 +89,7 @@ dist/             last-tile-standing.html (committed); data/ holds local run out
 * `BotDriver` adds simulated players as ordinary room members acting through the same `Room` API (same
   limits and `TILE_FULL`). They see only public state (counts, Gone tiles, phase) and their own
   bet, never the sequence. They favour popular tiles (corners, centre, 7/13/21/33/77/88/100), bet
-  €0.10–€20, react 40–320 ms after a tick, hop tiles, and cash out at varied targets (80% in Stage 1, 15% in
+  €0.10–€20, react 40–320 ms after a tick, hop tiles, and cash out at varied targets (80% in Vol. 1, 15% in
   Stage 2, 5% in Stage 3, 1% ride for 10,000x). Bot names come from the same generator as demo players.
 * Every tick carries a checksum of all 100 counts. The UI recomputes it after applying the deltas; a
   mismatch counts in the overlay and triggers a resync. This is how "engine and UI stay in sync" is measured.
@@ -97,25 +97,35 @@ dist/             last-tile-standing.html (committed); data/ holds local run out
   tiles, timestamped ticks, each player's bet/moves/outcome/payout) and the last 500 rejected actions with
   reasons. Settings → Download round log exports them as JSONL.
 
-## Tiles, capacity and layout (CHANGES_3)
+## Tiles, capacity, layout and betting (CHANGES_3 + CHANGES_4)
 
-* **Dynamic capacity.** When a round opens, `playerBase` is the number of players in the room (bettors or
-  not). Players who arrive before the round's first bet are counted too; after that it is frozen. A tile is
-  **Full** at `tileCap = min(99, max(1, ceil(20% × playerBase)))` and rejects further bets and moves
-  (`TILE_FULL`). Colours: **green** up to `floor(tileCap / 2)` players, **yellow** above that, **red "Full"** at
-  the cap. For 100 players that is green 0–10, yellow 11–19, Full at 20. The values travel in `roundState.caps`
-  (and in `occupancy.caps` if they change before the first bet). Config: `tileCapPct` (20; 0 = fixed cap).
-  Survival odds and RTP do not depend on occupancy.
-* **Layout.** Left: round stats and the participating players (up to 50 masked rows from the engine, yours
-  first as "You", "+ N more"). Centre: the multiplier box (as wide as the grid, stage tabs inside,
-  bronze/silver/gold frame for Stage 1/2/3), the grid, a one-line message box (betting countdown, resurrection,
-  fast finish, round result), and the bet panel. Right: past games (placeholder content), rooms, how to play.
-  Narrow screens stack centre, left, right.
-* **Resurrection** no longer covers the board. Surviving tiles keep their counts and glow, returning tiles
-  rise back in, survivors can move or cash out, and the message box announces it.
-* **Look.** Graphite theme. Near-square tiles with a top-lit gradient, a glossy diagonal reflection and a dark
-  bottom lip. Traffic-light colours (light green / yellow / red). Tile numbers are bold with a black outline and
-  a transparent fill. Your tile has a thick dark frame plus a "YOU" badge, so colour is never the only cue.
+* **Capacity** (`spec/CHANGES_4.md` §3). **While betting there is no limit**: any number of players may stand
+  on any tile, and the old 99-per-tile maximum is gone. **When the round starts**, `N` = the number of bets on
+  the board. A tile with `max(1, ceil(10% × N))` players or more is **locked (red)** and rejects moves onto it
+  (`TILE_FULL`) for the rest of the round. Tiles already above that keep their players. Tiles are **yellow** from
+  `ceil(5% × N)` and **green** below. Example: 300 bets → green 0–14, yellow 15–29, locked at 30. While betting,
+  the colours use the live bet count (display only). The thresholds travel in `roundState.caps`
+  (`live: true` while betting). Config: `tileCapPct` (10), `tileYellowPct` (5), `tileCapacity` (0 = no fixed
+  maximum). Survival odds and RTP do not depend on occupancy.
+* **Layout** (per the sketch). Left: round stats and the participating players (up to 50 masked rows from the
+  engine, yours first as "You", "+ N more"). Centre: the tile grid, then two boxes side by side. The
+  **multiplier section** has vertical **Vol. 1 / Vol. 2 / Vol. 3** tabs, the multiplier (no decimals from 100x:
+  "104x", "10,000x"), the status line and "Tiles left", in a bronze/silver/gold frame by Vol. The **bet section**
+  has the main button, then "Bet {CUR}", the amount, Min, Max and 1 / 2 / 5 / 10 (each sets the amount).
+  Right: past games (placeholder content), rooms, how to play. Phones stack the boxes.
+* **Main button** (`spec/CHANGES_4.md` §2):
+  * When betting opens, the game picks a random tile and outlines it in white, but you are not on it yet. The
+    button reads green "Bet x.yy CUR on random tile #n", or "… on your tile #n" after you tap another tile.
+  * After betting it is red "Cancel bet x.yy CUR", and tapping a tile moves you there.
+  * While running it is yellow "Cash out x.yy CUR now".
+  * With no active bet it is green "Place bet on random tile for next round". That queues a bet, which is
+    placed on a random tile when betting opens; the button then shows red "Cancel bet …".
+* **Resurrection** never covers the board. Surviving tiles keep their counts and glow, returning tiles rise
+  back in, survivors can move or cash out, and the status line announces it.
+* **Look.** Graphite theme. Near-square glossy 3D tiles in traffic-light colours, with bold black-outlined
+  numbers (transparent fill). A gone tile is just the board background with a small grey ×, and it fades out
+  in grey. There is no shake or red flash when your tile goes. The picked tile has a solid white outline. Your
+  bet's tile has a bronze / silver / gold frame by Vol. plus a "YOU" badge, so colour is never the only cue.
 
 ## Player identity (§0.1)
 
@@ -209,7 +219,7 @@ parameters are parsed from the URL: `token`, `operator`, `currency`, `lang`, `mo
    the default €10,000 cap only bets of €1.00 or more can reach it (on the last stage-3 tile); bets of €95.73
    or more reach it at the end of stage 2. No round-wide cap exists.
 6. **History entry.** Each finished round shows its 10,000x tile (from the revealed seed) and either
-   "no survivors at Stage *N*" (the stage in which the board emptied) or how many players won 10,000x.
+   "no survivors at Vol. *N*" (the stage in which the board emptied) or how many players won 10,000x.
 7. **Changing tile during betting** uses the normal `move` message. Changing the amount = cancel + bet.
 8. **Seat reservation.** A bet takes its tile seat at arrival (first come, first served) and then debits
    the wallet; a failed debit releases the seat. Cancel uses `wallet.rollback(betTx)`.
@@ -250,4 +260,5 @@ parameters are parsed from the URL: `token`, `operator`, `currency`, `lang`, `mo
 | new | Plays a full round from disk with networking off | `npm run check:offline` |
 | §0.1 | No prompt, generated name shown; reload keeps it; `?token=abc&currency=USD` uses the aggregator provider and shows USD; new demo identity; masked lists | `session.test.ts`, `host.test.ts`, `room.test.ts`, and `npm run check:offline` in the browser |
 | CR3 | No lock; dynamic cap + colour bands; three-column layout; uncovered resurrection; metal frames | `room.test.ts`, `npm run check:offline` (players list, bands, message box), visual check in the browser at 1440 and 375 px |
+| CR4 | Sketch layout; random-tile main-button flow incl. queued bet; no limit while betting, lock at 10% of bets (yellow 5%); ≥ 100x without decimals; × for gone tiles, grey fade, no shake; metal frame on your tile | `room.test.ts` (capacity), `math.test.ts` (format), `npm run check:offline` (button states, bronze frame, ×), visual check at 1440 and 375 px |
 | §0.2 | `GAME_TITLE` in `<title>`, header, help text, fairness modal, README; output `dist/last-tile-standing.html`; "Stage 1/2/3" in tabs, intermission and history | `npm run build` (title injected from the constant), `npm run check:offline` |

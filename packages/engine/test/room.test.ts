@@ -341,52 +341,50 @@ describe('fairness & audit', () => {
   });
 });
 
-describe('dynamic tile capacity (CHANGES_3 §2)', () => {
-  const caps = (n: number) => tileCapsFor(n, 20, 99);
-  it('cap = min(99, max(1, ceil(20% × players in room))), green up to half of it', () => {
-    expect(caps(1)).toEqual({ playerBase: 1, tileCap: 1, greenMax: 0 });
-    expect(caps(100)).toEqual({ playerBase: 100, tileCap: 20, greenMax: 10 });
-    expect(caps(301)).toEqual({ playerBase: 301, tileCap: 61, greenMax: 30 });
-    expect(caps(9_901)).toEqual({ playerBase: 9_901, tileCap: 99, greenMax: 49 });
-    expect(caps(0).tileCap).toBe(1);
-    expect(tileCapsFor(500, 0, 99).tileCap).toBe(99); // pct 0 = fixed cap
-    const c = caps(100);
-    expect([0, 10, 11, 19, 20].map((n) => tileBand(n, false, c))).toEqual(['green', 'green', 'yellow', 'yellow', 'full']);
+describe('tile capacity (CHANGES_4 §3)', () => {
+  const caps = (n: number) => tileCapsFor(n, 10, 5, false);
+  it('lock at max(1, ceil(10% of bets)), yellow from ceil(5%)', () => {
+    expect(caps(300)).toEqual({ playerBase: 300, tileCap: 30, yellowFrom: 15, live: false });
+    expect(caps(100)).toEqual({ playerBase: 100, tileCap: 10, yellowFrom: 5, live: false });
+    expect(caps(9_900)).toMatchObject({ tileCap: 990, yellowFrom: 495 }); // no 99 maximum any more
+    expect(caps(1)).toMatchObject({ tileCap: 1, yellowFrom: 1 });
+    expect(caps(0)).toMatchObject({ tileCap: 1, yellowFrom: 1 });
+    const c = caps(300);
+    expect([0, 14, 15, 29, 30, 45].map((n) => tileBand(n, false, c))).toEqual(['green', 'green', 'yellow', 'yellow', 'full', 'full']);
     expect(tileBand(5, true, c)).toBe('gone');
   });
 
-  it('with 100 players in the room a tile is Full at 20: the 21st bet and a move onto it are rejected', async () => {
-    const h = setupRoom({ tileCapPct: 20 });
+  it('no limit while betting: 150 of 300 bets can stand on one tile', async () => {
+    const h = setupRoom({ tileCapPct: 10, tileCapacity: 0 });
+    const ids = Array.from({ length: 300 }, (_, i) => `p${i}`);
+    h.join(...ids);
+    for (let i = 0; i < 150; i++) expect((await h.room.bet(ids[i], 10, h.safeTile(1, 0))).ok).toBe(true);
+    expect(h.room.tileCaps).toMatchObject({ playerBase: 150, tileCap: 15, live: true }); // live display only
+    for (let i = 150; i < 300; i++) expect((await h.room.bet(ids[i], 10, 1 + (i % 20))).ok).toBe(true);
+    expect(h.room.core.counts[h.safeTile(1, 0)]).toBeGreaterThanOrEqual(150);
+    expect(h.room.snapshot().caps).toMatchObject({ playerBase: 300, tileCap: 30, yellowFrom: 15, live: true });
+  });
+
+  it('at round start the lock freezes at 10% of bets: moves onto locked tiles get TILE_FULL, over-full tiles keep their players', async () => {
+    const h = setupRoom({ tileCapPct: 10, tileCapacity: 0 });
     const ids = Array.from({ length: 100 }, (_, i) => `p${i}`);
-    h.join(...ids); // all present before the first bet
-    expect(h.room.tileCaps).toEqual({ playerBase: 100, tileCap: 20, greenMax: 10 });
-    const t = h.safeTile(1, 0);
-    for (let i = 0; i < 20; i++) expect((await h.room.bet(ids[i], 10, t)).ok).toBe(true);
-    expect(await h.room.bet(ids[20], 10, t)).toEqual({ ok: false, reason: 'TILE_FULL' });
-    expect((await h.room.bet(ids[20], 10, h.safeTile(1, 1))).ok).toBe(true);
-    h.clock.advanceTo(BET_END + 700);
-    expect(h.room.move(ids[20], t)).toEqual({ ok: false, reason: 'TILE_FULL' });
-    expect(h.room.snapshot().caps.tileCap).toBe(20);
-  });
-
-  it('the base counts players who join before the first bet, then freezes for the round', async () => {
-    const h = setupRoom({ tileCapPct: 20 });
-    expect(h.room.tileCaps.playerBase).toBe(0); // room opened before anyone arrived
-    h.join(...Array.from({ length: 10 }, (_, i) => `p${i}`));
-    expect(h.room.tileCaps).toMatchObject({ playerBase: 10, tileCap: 2 });
-    await h.room.bet('p0', 10, 3);
-    h.join(...Array.from({ length: 90 }, (_, i) => `late${i}`));
-    expect(h.room.tileCaps).toMatchObject({ playerBase: 10, tileCap: 2 });
-    h.clock.advance(10_000 + 91 * 500 + 3_000 + 90 * 500 + 3_000 + 99 * 500 + 5_000);
-    h.clock.advance(200_000);
-    expect(h.room.tileCaps).toMatchObject({ playerBase: 100, tileCap: 20 }); // next round: everyone counts
-  });
-
-  it('capacity changes before the first bet reach clients in an occupancy message', () => {
-    const h = setupRoom({ tileCapPct: 20 });
-    h.join('a', 'b', 'c', 'd', 'e', 'f');
-    h.clock.advance(100);
-    expect(h.of('occupancy').at(-1)!.caps).toMatchObject({ playerBase: 6, tileCap: 2, greenMax: 1 });
+    h.join(...ids, 'late');
+    const crowded = h.safeTile(1, 0);
+    const edge = h.safeTile(1, 1);
+    for (let i = 0; i < 40; i++) await h.room.bet(ids[i], 10, crowded); // 40% on one tile
+    for (let i = 40; i < 49; i++) await h.room.bet(ids[i], 10, edge); // 9 = one below the cap
+    for (let i = 49; i < 100; i++) await h.room.bet(ids[i], 10, h.safeTile(1, 2 + (i % 5)));
+    h.clock.advanceTo(BET_END + 100);
+    expect(h.room.tileCaps).toEqual({ playerBase: 100, tileCap: 10, yellowFrom: 5, live: false });
+    expect(h.room.core.counts[crowded]).toBe(40);
+    expect(h.room.move(ids[60], edge).ok).toBe(true); // 10th player: reaches the cap
+    expect(h.room.move(ids[61], edge)).toEqual({ ok: false, reason: 'TILE_FULL' });
+    expect(h.room.move(ids[62], crowded)).toEqual({ ok: false, reason: 'TILE_FULL' });
+    expect(h.of('roundState').at(-1)!.caps).toMatchObject({ tileCap: 10, live: false });
+    // Next round: the base starts again from the new bets.
+    while (h.room.roundNo === 1) h.clock.advance(500);
+    expect(h.room.phase).toBe('betting');
+    expect(h.room.tileCaps).toMatchObject({ playerBase: 0, live: true });
   });
 });
 

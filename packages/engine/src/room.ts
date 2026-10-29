@@ -10,6 +10,7 @@ import {
   STAGE_REMOVALS,
   countsChecksum,
   tileCapsFor,
+  hardTileCap,
   type TileCaps,
   maskName,
   type BroadcastMessage,
@@ -116,8 +117,8 @@ export class Room {
   private betSeq = new Map<string, number>();
   private pendingDebits = new Map<string, { aborted: boolean }>();
   private dirty = new Set<number>();
+  /** Frozen thresholds once the round runs (null during betting: computed live). */
   private caps: TileCaps | null = null;
-  private capsDirty = false;
   private feedDirty = true;
   private topCashouts: LiveFeedMsg['topCashouts'] = [];
   private timer: TimerHandle | null = null;
@@ -139,7 +140,9 @@ export class Room {
 
   /** This round's dynamic tile capacity (CHANGES_3 §2). */
   get tileCaps(): TileCaps {
-    return { ...this.caps! };
+    if (this.caps) return { ...this.caps };
+    const { tileCapPct, tileYellowPct } = this.config;
+    return tileCapsFor(this.core.players.size, tileCapPct, tileYellowPct, true);
   }
 
   start(): void {
@@ -160,18 +163,6 @@ export class Room {
 
   addMember(m: Member): void {
     this.members.set(m.playerId, m);
-    // Players who arrive before the round's first bet still count towards this round's capacity base.
-    if (this.core && this.core.phase === 'betting' && this.core.players.size === 0) this.updateCaps();
-  }
-
-  /** CHANGES_3 §2: capacity from the players in the room; frozen from the round's first bet. */
-  private updateCaps(): void {
-    const { tileCapPct, tileCapacity } = this.config;
-    const next = tileCapsFor(this.members.size, tileCapPct, tileCapacity);
-    if (this.caps && next.tileCap === this.caps.tileCap && next.playerBase === this.caps.playerBase) return;
-    this.caps = next;
-    this.core.limits.tileCapacity = next.tileCap;
-    this.capsDirty = true;
   }
 
   /** Leaving keeps any live bet on the board (it rides until it resolves). */
@@ -231,10 +222,9 @@ export class Room {
     this.clientSeed = seedProvider.clientSeedFor(this.roundId, this.roundNo);
     this.permutations = derivePermutations(this.serverSeed, this.clientSeed);
     const { tileCapacity, minBet, maxBet, maxWinPerBet } = this.config;
-    this.core = new RoundCore(this.permutations, { tileCapacity, minBet, maxBet, maxWinPerBet });
+    // CHANGES_4 §3: no per-tile limit while betting (only an optional fixed maximum).
+    this.core = new RoundCore(this.permutations, { tileCapacity: hardTileCap(tileCapacity), minBet, maxBet, maxWinPerBet });
     this.caps = null;
-    this.updateCaps();
-    this.capsDirty = false; // the snapshot below carries them
     this.createdAt = at;
     this.runningAt = null;
     this.fast = false;
@@ -257,6 +247,15 @@ export class Room {
       const r = this.core.cancelBet(playerId);
       if (r.ok) this.dirty.add(r.player.tile);
       this.audits.delete(playerId);
+    }
+    // CHANGES_4 §3: lock threshold from the bets on the board; it also caps moves for the rest of the round.
+    const { tileCapPct, tileYellowPct, tileCapacity } = this.config;
+    if (tileCapPct > 0) {
+      this.caps = tileCapsFor(this.core.players.size, tileCapPct, tileYellowPct, false);
+      this.core.limits.tileCapacity = Math.min(this.caps.tileCap, hardTileCap(tileCapacity));
+    } else {
+      const cap = hardTileCap(tileCapacity);
+      this.caps = { playerBase: this.core.players.size, tileCap: cap, yellowFrom: Math.ceil(cap / 2), live: false };
     }
     this.core.startRunning();
     this.runningAt = at;
@@ -598,10 +597,8 @@ export class Room {
   }
 
   flushOccupancy(): void {
-    if (this.closed || (this.dirty.size === 0 && !this.capsDirty)) return;
-    const caps = this.capsDirty && this.caps ? { caps: { ...this.caps } } : {};
-    this.capsDirty = false;
-    this.broadcast({ t: 'occupancy', seq: 0, countsDelta: this.takeDelta(), ...caps });
+    if (this.closed || this.dirty.size === 0) return;
+    this.broadcast({ t: 'occupancy', seq: 0, countsDelta: this.takeDelta() });
   }
 
   liveFeed(): LiveFeedMsg {
@@ -688,7 +685,7 @@ export class Room {
       phaseEndsAt: this.core.phase === 'running' ? this.nextTickAt : this.phaseEndsAt,
       serverTime: now,
       fast: this.fast,
-      caps: { ...this.caps! },
+      caps: this.tileCaps,
     };
   }
 
