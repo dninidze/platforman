@@ -110,3 +110,15 @@ describe('formatMultiplier (CHANGES_4 §1)', () => {
     expect(formatMultiplier(10_000)).toBe('10,000x');
   });
 });
+
+describe('volProgress (Recent rounds bar)', () => {
+  it('maps tiles survived onto Vol. and tile', async () => {
+    const { volProgress } = await import('../src');
+    expect(volProgress(205)).toEqual({ vol: 3, tile: 24, filled: [91, 90, 24] });
+    expect(volProgress(128)).toEqual({ vol: 2, tile: 37, filled: [91, 37, 0] });
+    expect(volProgress(90)).toEqual({ vol: 1, tile: 90, filled: [90, 0, 0] });
+    expect(volProgress(91)).toEqual({ vol: 2, tile: 0, filled: [91, 0, 0] });
+    expect(volProgress(0)).toEqual({ vol: 1, tile: 0, filled: [0, 0, 0] });
+    expect(volProgress(280)).toEqual({ vol: 3, tile: 99, filled: [91, 90, 99] });
+  });
+});

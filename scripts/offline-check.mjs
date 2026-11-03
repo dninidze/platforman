@@ -81,20 +81,21 @@ check('own row first in the players list, marked "You"', /^You \(/.test(feed[0] 
 const tiles = await b.evaluate(`({ bands: [...new Set([...document.querySelectorAll('.board .tile')].map((t) => [...t.classList].find((c) => c.startsWith('band-'))))], gone: [...new Set([...document.querySelectorAll('.board .tile.band-gone .tile-count')].map((x) => x.textContent))] })`);
 check('tiles carry traffic-light bands; gone tiles show only ×', tiles.bands.every((x) => /^band-(green|yellow|full|gone)$/.test(x)) && tiles.gone.join('') === '×', `${tiles.bands.join(',')} / ${tiles.gone.join('')}`);
 await b.waitFor(`/Round over/.test(document.querySelector('.mstatus')?.textContent || '')`, 300_000, 'round end');
-const end = await b.evaluate(`({ message: document.querySelector('.mstatus')?.textContent, covered: !!document.querySelector('.board .overlay'), history: [...(document.querySelector('.rounds tbody tr')?.children ?? [])].map((td) => td.textContent), heads: [...document.querySelectorAll('.rounds th')].map((th) => th.textContent) })`);
+const end = await b.evaluate(`({ message: document.querySelector('.mstatus')?.textContent, covered: !!document.querySelector('.board .overlay'), history: [...(document.querySelector('.rr-list button.rr-row')?.children ?? [])].map((c) => c.innerText.split(String.fromCharCode(10)).join(' | ')), heads: [...document.querySelectorAll('.rr-head span')].map((h) => h.textContent), sub: document.querySelector('.rr-sub')?.textContent, bar: document.querySelectorAll('.rr-list .rr-row .rr-seg').length })`);
 log(`round over: ${JSON.stringify(end)}`);
 check('round played to the end; result in the status line, board not covered', /Round over/.test(end.message ?? '') && !end.covered && !!end.history, end.message);
 check(
-  'Recent rounds: Round id | Round max | Top man | Top cashout',
-  end.heads.join('|') === 'Round id|Round max|Top man|Top cashout' &&
+  'Recent rounds: 10,000x in the header; Round | Lasted longest (Vol. · tile + bar) | Best cashout',
+  end.heads.join('|') === 'Round|Lasted longest|Best cashout' &&
+    /up to 10,000x/.test(end.sub ?? '') &&
     /^#\d+$/.test(end.history[0]) &&
-    end.history[1] === '10,000x' &&
-    /^(\d[\d,.]*x n\d+|–)$/.test(end.history[2]) &&
-    /^(\d[\d,.]*x \D?[\d,.]+|–)$/.test(end.history[3]),
-  end.history.join(' | '),
+    (/^\d[\d,.]*x \| (Vol\. \d · tile \d+|Cleared Vol\. \d|Survived all 3 Vols|Gone on the first tile)$/.test(end.history[1]) || end.history[1] === '–') &&
+    /^(\d[\d,.]*x \| \D?[\d,.]+|–)$/.test(end.history[2]) &&
+    (end.history[1] === '–' || end.bar >= 3),
+  end.history.join(' || '),
 );
-// The round id opens that round's details, already verified.
-await b.evaluate(`document.querySelector('.rounds tbody td button').click(), true`);
+// The whole row opens that round's details, already verified.
+await b.evaluate(`document.querySelector('.rr-list button.rr-row').click(), true`);
 await b.waitFor(`!!document.querySelector('.verdict')`, 10_000, 'round details');
 const details = await b.evaluate(`({ verdict: document.querySelector('.verdict').textContent, seed: [...document.querySelectorAll('.modal .kv code')].map((c) => c.textContent).find((t) => /^[0-9a-f]{64}$/.test(t)) })`);
 check('clicking a round id opens its details with a passing verification', details.verdict.includes('Verified') && !!details.seed, details.verdict);

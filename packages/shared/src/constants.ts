@@ -101,3 +101,23 @@ export function tileBand(count: number, gone: boolean, caps: Pick<TileCaps, 'til
 export function formatMultiplier(m: number): string {
   return m >= 100 ? `${Math.floor(m).toLocaleString('en-US')}x` : `${m.toFixed(2)}x`;
 }
+
+/**
+ * Where a "tiles survived" count lands across the three Vols (Recent rounds bar): e.g. 205 → Vol. 3,
+ * tile 24 (91 + 90 + 24), filled = [91, 90, 24].
+ */
+export function volProgress(survived: number): { vol: Stage; tile: number; filled: [number, number, number] } {
+  let left = Math.max(0, Math.min(survived, STAGE_REMOVALS[0] + STAGE_REMOVALS[1] + STAGE_REMOVALS[2]));
+  const filled = STAGE_REMOVALS.map((len) => {
+    const f = Math.min(len, left);
+    left -= f;
+    return f;
+  }) as [number, number, number];
+  let vol: Stage = 1;
+  let n = survived;
+  while (vol < 3 && n >= STAGE_REMOVALS[vol - 1]) {
+    n -= STAGE_REMOVALS[vol - 1];
+    vol = (vol + 1) as Stage;
+  }
+  return { vol, tile: Math.min(n, STAGE_REMOVALS[vol - 1]), filled };
+}

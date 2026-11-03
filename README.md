@@ -118,22 +118,15 @@ dist/             platforman.html (committed); data/ holds local run outputs (gi
   * Right: **Recent rounds** (below), rooms, how to play.
 * **Nudge** (`spec/CHANGES_5.md` §2). Tapping a tile while not in the game (no bet, cashed out or lost) pulses
   the bet section's frame yellow, pointing at "Place bet on random tile for next round".
-* **Recent rounds** (`spec/CHANGES_5.md` §5). Columns:
-  * **Round id**: short, e.g. `#12`. Click it to see the round's details (full id, seeds, 10,000x tile,
-    sequences) with its verification already run.
-  * **Round max**: always 10,000x.
-  * **Top man**: the player who lasted longest without cashing out, shown as the last multiplier they stood
-    at and the tiles they survived, e.g. `12.70x n109`. A 10,000x winner shows as `10,000x n280`.
-  * **Top cashout**: the highest multiplier cashed out and its amount.
-  * The engine computes these at round end (`roundHighlights`) and sends them in `roundEnd` and the room
-    history.
-* **Main button** (`spec/CHANGES_4.md` §2):
-  * When betting opens, the game picks a random tile and outlines it in white, but you are not on it yet. The
-    button reads green "Bet x.yy CUR on random tile #n", or "… on your tile #n" after you tap another tile.
-  * After betting it is red "Cancel bet x.yy CUR", and tapping a tile moves you there.
-  * While running it is yellow "Cash out x.yy CUR now".
-  * With no active bet it is green "Place bet on random tile for next round". That queues a bet, which is
-    placed on a random tile when betting opens; the button then shows red "Cancel bet …".
+* **Recent rounds** ( §5 and §5a).
+  * The header says once that every round pays up to 10,000x.
+  * Each row shows the round (), **Lasted longest** and **Best cashout**. Lasted longest is the
+    multiplier the longest-lasting non-cashed player stood at, with the Vol. and tile they reached (e.g.
+    "Vol. 3 · tile 24") and a thin bronze/silver/gold bar across the three Vols. Best cashout is the highest
+    multiplier cashed out, with its amount.
+  * The whole row opens the round's details with its verification already run.
+  * The engine computes the figures at round end ();  maps tiles survived
+    to Vol. and tile.
 * **Resurrection** never covers the board. Surviving tiles keep their counts and glow, returning tiles rise
   back in, survivors can move or cash out, and the status line announces it.
 * **Look.** Graphite theme. Near-square glossy 3D tiles in traffic-light colours, with bold black-outlined
@@ -270,7 +263,7 @@ parameters are parsed from the URL: `token`, `operator`, `currency`, `lang`, `mo
 | 8 | `npm run sim` passes | 1M rounds in 33 s, 282 strategies (every cash-out point, random walk with moves, ride to 10,000x), worst \|z\| 3.09, none beyond 4σ |
 | 9 | In-page stress result recorded | `LOADTEST.md` |
 | 10 | New room past `roomSoftCap` | `roomManager.test.ts`, `host.test.ts` "simulate busy server" |
-| 11 | `npm test` green | 88 tests in 8 files |
+| 11 | `npm test` green | 89 tests in 8 files |
 | new | Plays a full round from disk with networking off | `npm run check:offline` |
 | §0.1 | No prompt, generated name shown; reload keeps it; `?token=abc&currency=USD` uses the aggregator provider and shows USD; new demo identity; masked lists | `session.test.ts`, `host.test.ts`, `room.test.ts`, and `npm run check:offline` in the browser |
 | CR3 | No lock; dynamic cap + colour bands; three-column layout; uncovered resurrection; metal frames | `room.test.ts`, `npm run check:offline` (players list, bands, message box), visual check in the browser at 1440 and 375 px |
