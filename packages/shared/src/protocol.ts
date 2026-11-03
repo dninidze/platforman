@@ -140,6 +140,14 @@ export interface SurvivorPaid {
   amount: number;
 }
 
+/** Recent-rounds highlights (CHANGES_5 §5). */
+export interface RoundHighlights {
+  /** Longest-lasting player who did not cash out: last multiplier stood at, tiles survived (10,000x winner: 280). */
+  topMan: { multiplier: number; survived: number } | null;
+  /** Highest multiplier cashed out (ties: larger amount) and its amount. */
+  topCashout: { multiplier: number; amount: number } | null;
+}
+
 export interface RoundEndMsg {
   t: 'roundEnd';
   seq: number;
@@ -154,6 +162,7 @@ export interface RoundEndMsg {
   /** Stage in which the round emptied, or null if the round ran to the end of stage 3. */
   emptiedAtStage: Stage | null;
   survivorsPaid: SurvivorPaid[];
+  highlights: RoundHighlights;
   phaseEndsAt: number | null;
   serverTime: number;
 }
@@ -255,6 +264,7 @@ export interface HistoryEntryMsg {
   survivors: number;
   players: number;
   endedAt: number;
+  highlights: RoundHighlights;
 }
 
 export interface HistoryMsg {

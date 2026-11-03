@@ -1,6 +1,6 @@
 import { STAGE_REMOVALS, TILE_COUNT, type Stage } from './constants';
 import { getMultiplier100, getNextMultiplier100, payout } from './math';
-import type { ErrorCode, Phase, PlayerState } from './protocol';
+import type { ErrorCode, Phase, PlayerState, RoundHighlights } from './protocol';
 
 /**
  * Pure, timer-free round state machine. The server wraps it with timing, wallet and networking;
@@ -284,4 +284,34 @@ function fail(reason: ErrorCode): { ok: false; reason: ErrorCode } {
 
 function validTile(tile: number): boolean {
   return Number.isInteger(tile) && tile >= 0 && tile < TILE_COUNT;
+}
+
+/** Removals in all stages before `stage`. */
+const removalsBefore = (stage: Stage) => STAGE_REMOVALS.slice(0, stage - 1).reduce((a, b) => a + b, 0);
+
+/**
+ * CHANGES_5 §5. Top man: the player who lasted longest without cashing out. A player lost at removal k of
+ * stage s survived removalsBefore(s) + k - 1 tiles and last stood at the multiplier after removal k - 1.
+ * Survivors paid at the end of stage 3 survived all 280. Top cashout: highest multiplier cashed out, ties
+ * to the larger amount.
+ */
+export function roundHighlights(players: Iterable<RoundPlayer>): RoundHighlights {
+  let topMan: RoundHighlights['topMan'] = null;
+  let topCashout: RoundHighlights['topCashout'] = null;
+  for (const p of players) {
+    if (p.outcome === 'lost' && p.resolvedStage !== null && p.resolvedK !== null) {
+      const survived = removalsBefore(p.resolvedStage) + p.resolvedK - 1;
+      const multiplier = getMultiplier100(p.resolvedStage, p.resolvedK - 1) / 100;
+      if (!topMan || survived > topMan.survived) topMan = { multiplier, survived };
+    } else if (p.outcome === 'survived') {
+      const survived = removalsBefore(3) + STAGE_REMOVALS[2];
+      topMan = { multiplier: p.multiplier100! / 100, survived };
+    } else if ((p.outcome === 'cashout' || p.outcome === 'maxWin') && p.multiplier100 !== null) {
+      const m = p.multiplier100 / 100;
+      if (!topCashout || m > topCashout.multiplier || (m === topCashout.multiplier && p.payout > topCashout.amount)) {
+        topCashout = { multiplier: m, amount: p.payout };
+      }
+    }
+  }
+  return { topMan, topCashout };
 }

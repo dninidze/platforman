@@ -1,6 +1,6 @@
-# Last Tile Standing – MVP
+# Platforman – MVP
 
-(Working title was "Platform 3". The user-visible title is the `GAME_TITLE` constant in
+(Earlier titles: "Platform 3", then "Last Tile Standing". The user-visible title is the `GAME_TITLE` constant in
 `packages/shared/src/constants.ts`; internal package and folder names keep the old name.)
 
 A multiplayer crash game. 100 tiles (10×10). Players bet on a tile, tiles go **Gone** one by one every
@@ -15,7 +15,7 @@ they stay identical).
 
 ## The deliverable
 
-**`dist/last-tile-standing.html`** (about 290 KB): open it by double-click. Everything is inlined: React UI, CSS,
+**`dist/platforman.html`** (about 300 KB): open it by double-click. Everything is inlined: React UI, CSS,
 the game engine (as an inlined Web Worker) and the multiplier table. It makes no network requests and
 works with networking disabled (checked with `npm run check:offline`, below).
 
@@ -47,12 +47,12 @@ npm run build
 
 | Command | What it does |
 | --- | --- |
-| `npm run build` | Builds `dist/last-tile-standing.html` (Vite + `vite-plugin-singlefile`) and fails if any external `src`/`href` remains or the file exceeds 2 MB |
+| `npm run build` | Builds `dist/platforman.html` (Vite + `vite-plugin-singlefile`) and fails if any external `src`/`href` remains or the file exceeds 2 MB |
 | `npm run dev` | Vite dev server on <http://localhost:5173> (same app, engine in a worker) |
 | `npm test` | Vitest: shared engine, fairness (incl. Web Crypto parity), limits, capacity, fast finish, room manager, wallet, in-page host and bots |
 | `npm run typecheck` | `tsc` (strict) over every package |
 | `npm run sim` | Monte Carlo RTP check in Node, 1M rounds by default (`-- --rounds N --seed hex --verbose --csv file`) |
-| `npm run check:offline` | Opens `dist/last-tile-standing.html` from disk in headless Chrome/Edge with networking disabled and checks the §0.1/§0.2 points (no prompt, stable demo name, new identity, masked lists, aggregator token + USD, title, stage labels), plays a full round through the UI, runs the verifier, and reports any network request |
+| `npm run check:offline` | Opens `dist/platforman.html` from disk in headless Chrome/Edge with networking disabled and checks the §0.1/§0.2 points (no prompt, stable demo name, new identity, masked lists, aggregator token + USD, title, stage labels), plays a full round through the UI, runs the verifier, and reports any network request |
 | `npm run check:stress` | Same harness: 9,900 bots for N rounds via the in-page stress recorder (`-- 5 --headed`) |
 | `npm run verify -- file.jsonl` | Re-verifies every round in a downloaded round log (seed hash, 3 sequences, tick log, payouts) |
 
@@ -66,7 +66,7 @@ packages/engine   Room (timeline, wallet, broadcasts), RoomManager (sharding), M
 packages/client   React UI, transports (Web Worker / main thread / WebSocket), engine worker entry
 tools/sim         Monte Carlo RTP simulator (Node, worker threads, real RoundCore + real seeds)
 scripts/          headless-browser checks (offline round, stress)
-dist/             last-tile-standing.html (committed); data/ holds local run outputs (gitignored)
+dist/             platforman.html (committed); data/ holds local run outputs (gitignored)
 ```
 
 ### How it fits together
@@ -97,22 +97,36 @@ dist/             last-tile-standing.html (committed); data/ holds local run out
   tiles, timestamped ticks, each player's bet/moves/outcome/payout) and the last 500 rejected actions with
   reasons. Settings → Download round log exports them as JSONL.
 
-## Tiles, capacity, layout and betting (CHANGES_3 + CHANGES_4)
+## Tiles, capacity, layout and betting (CHANGES_3 – CHANGES_5)
 
-* **Capacity** (`spec/CHANGES_4.md` §3). **While betting there is no limit**: any number of players may stand
-  on any tile, and the old 99-per-tile maximum is gone. **When the round starts**, `N` = the number of bets on
-  the board. A tile with `max(1, ceil(10% × N))` players or more is **locked (red)** and rejects moves onto it
-  (`TILE_FULL`) for the rest of the round. Tiles already above that keep their players. Tiles are **yellow** from
-  `ceil(5% × N)` and **green** below. Example: 300 bets → green 0–14, yellow 15–29, locked at 30. While betting,
-  the colours use the live bet count (display only). The thresholds travel in `roundState.caps`
-  (`live: true` while betting). Config: `tileCapPct` (10), `tileYellowPct` (5), `tileCapacity` (0 = no fixed
-  maximum). Survival odds and RTP do not depend on occupancy.
-* **Layout** (per the sketch). Left: round stats and the participating players (up to 50 masked rows from the
-  engine, yours first as "You", "+ N more"). Centre: the tile grid, then two boxes side by side. The
-  **multiplier section** has vertical **Vol. 1 / Vol. 2 / Vol. 3** tabs, the multiplier (no decimals from 100x:
-  "104x", "10,000x"), the status line and "Tiles left", in a bronze/silver/gold frame by Vol. The **bet section**
-  has the main button, then "Bet {CUR}", the amount, Min, Max and 1 / 2 / 5 / 10 (each sets the amount).
-  Right: past games (placeholder content), rooms, how to play. Phones stack the boxes.
+* **Capacity and colours** (`spec/CHANGES_5.md` §3). **While betting there is no limit**: any number of players
+  may stand on any tile (no 99 maximum). **When the round starts**, `N` = the number of bets on the board. A tile
+  with `max(1, ceil(5% × N))` players or more is **red and locked**, and rejects moves onto it (`TILE_FULL`)
+  for the rest of the round. Tiles already above that keep their players. **Green** = empty (0), **yellow** =
+  anyone on it. Example: 300 bets → locked at 15. While betting, the colours use the live bet count (display
+  only). The thresholds travel in `roundState.caps` (`live: true` while betting). Config: `tileCapPct` (5),
+  `tileYellowPct` (0 = yellow from 1 player), `tileCapacity` (0 = no fixed maximum). Survival odds and RTP do
+  not depend on occupancy.
+* **Layout** (per the sketches). Left: round stats and the participating players (up to 50 masked rows from
+  the engine, yours first as "You", "+ N more"). Centre: three **fixed-size** sections: the tile grid, then two
+  **identical** boxes side by side (stacked on phones, same fixed height). Content never resizes them.
+  * The **multiplier section** has small vertical **Vol. 1 / Vol. 2 / Vol. 3** tabs and the multiplier (no
+    decimals from 100x: "104x", "10,000x"). Under them sit the bold status message and **"Tiles left: X of Y"**,
+    the tiles still to go in this Vol. It has a bronze/silver/gold frame by Vol.
+  * The **bet section** has the main button (white text with a black contour on every colour), then
+    **− amount CUR + 1 2 5 10**. − and + step by 0.10, and holding them repeats. 1 / 2 / 5 / 10 set the amount.
+  * Right: **Recent rounds** (below), rooms, how to play.
+* **Nudge** (`spec/CHANGES_5.md` §2). Tapping a tile while not in the game (no bet, cashed out or lost) pulses
+  the bet section's frame yellow, pointing at "Place bet on random tile for next round".
+* **Recent rounds** (`spec/CHANGES_5.md` §5). Columns:
+  * **Round id**: short, e.g. `#12`. Click it to see the round's details (full id, seeds, 10,000x tile,
+    sequences) with its verification already run.
+  * **Round max**: always 10,000x.
+  * **Top man**: the player who lasted longest without cashing out, shown as the last multiplier they stood
+    at and the tiles they survived, e.g. `12.70x n109`. A 10,000x winner shows as `10,000x n280`.
+  * **Top cashout**: the highest multiplier cashed out and its amount.
+  * The engine computes these at round end (`roundHighlights`) and sends them in `roundEnd` and the room
+    history.
 * **Main button** (`spec/CHANGES_4.md` §2):
   * When betting opens, the game picks a random tile and outlines it in white, but you are not on it yet. The
     button reads green "Bet x.yy CUR on random tile #n", or "… on your tile #n" after you tap another tile.
@@ -145,7 +159,7 @@ parameters are parsed from the URL: `token`, `operator`, `currency`, `lang`, `mo
   `POST /session/validate {token, operator}`) returning playerId, display name, currency, balance and mode.
   The browser must never be trusted with it. The stub derives `playerId = agg:` + SHA-256(operator:token)
   and takes the currency from the URL. If the aggregator supplies a display name it is used; otherwise a
-  stable pseudonym is derived from a hash of `playerId`. Example: `last-tile-standing.html?token=abc&currency=USD`.
+  stable pseudonym is derived from a hash of `playerId`. Example: `platforman.html?token=abc&currency=USD`.
 * The page sends the session's `playerId`, `displayName`, `currency` and opening balance in `join`. The
   engine starts its rooms in the session currency (the worker gets it in its first message).
 * **Masking.** Public lists (live feed top cashouts, round survivors) carry names masked as the first 2
@@ -256,9 +270,10 @@ parameters are parsed from the URL: `token`, `operator`, `currency`, `lang`, `mo
 | 8 | `npm run sim` passes | 1M rounds in 33 s, 282 strategies (every cash-out point, random walk with moves, ride to 10,000x), worst \|z\| 3.09, none beyond 4σ |
 | 9 | In-page stress result recorded | `LOADTEST.md` |
 | 10 | New room past `roomSoftCap` | `roomManager.test.ts`, `host.test.ts` "simulate busy server" |
-| 11 | `npm test` green | 85 tests in 8 files |
+| 11 | `npm test` green | 88 tests in 8 files |
 | new | Plays a full round from disk with networking off | `npm run check:offline` |
 | §0.1 | No prompt, generated name shown; reload keeps it; `?token=abc&currency=USD` uses the aggregator provider and shows USD; new demo identity; masked lists | `session.test.ts`, `host.test.ts`, `room.test.ts`, and `npm run check:offline` in the browser |
 | CR3 | No lock; dynamic cap + colour bands; three-column layout; uncovered resurrection; metal frames | `room.test.ts`, `npm run check:offline` (players list, bands, message box), visual check in the browser at 1440 and 375 px |
 | CR4 | Sketch layout; random-tile main-button flow incl. queued bet; no limit while betting, lock at 10% of bets (yellow 5%); ≥ 100x without decimals; × for gone tiles, grey fade, no shake; metal frame on your tile | `room.test.ts` (capacity), `math.test.ts` (format), `npm run check:offline` (button states, bronze frame, ×), visual check at 1440 and 375 px |
-| §0.2 | `GAME_TITLE` in `<title>`, header, help text, fairness modal, README; output `dist/last-tile-standing.html`; "Stage 1/2/3" in tabs, intermission and history | `npm run build` (title injected from the constant), `npm run check:offline` |
+| CR5 | Fixed equal sections; −/+ 0.10 with 1/2/5/10; outlined CTA text; yellow nudge; green 0 / yellow ≥ 1 / red-locked ≥ 5% of bets; "Platforman" and `dist/platforman.html`; Recent rounds with Top man / Top cashout and clickable round details | `room.test.ts` (5% rule, highlights), `npm run check:offline` (24 checks incl. Recent rounds and details), browser checks of box sizes through a round, −/+ steps and the nudge |
+| §0.2 | `GAME_TITLE` in `<title>`, header, help text, fairness modal, README; output `dist/platforman.html`; "Stage 1/2/3" in tabs, intermission and history | `npm run build` (title injected from the constant), `npm run check:offline` |

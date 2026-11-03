@@ -1,4 +1,4 @@
-// In-page stress mode, automated: opens dist/last-tile-standing.html from disk (networking blocked), enters the room,
+// In-page stress mode, automated: opens dist/platforman.html from disk (networking blocked), enters the room,
 // presses the overlay's "Stress test (9,900 bots)" button for N rounds and prints the recorder's result.
 //
 //   node scripts/stress-check.mjs [rounds=5] [--headed] [--cpu=4] [--browser=path]
@@ -9,7 +9,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { findBrowser, launch, setInput, sleep } from './browser.mjs';
 
 const appRoot = fileURLToPath(new URL('..', import.meta.url));
-const file = resolve(appRoot, 'dist/last-tile-standing.html');
+const file = resolve(appRoot, 'dist/platforman.html');
 if (!existsSync(file)) throw new Error('run `npm run build` first');
 const rounds = Number(process.argv.find((a) => /^\d+$/.test(a)) ?? 5);
 const headed = process.argv.includes('--headed');

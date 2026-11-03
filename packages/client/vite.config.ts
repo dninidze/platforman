@@ -5,7 +5,7 @@ import { viteSingleFile } from 'vite-plugin-singlefile';
 import { GAME_TITLE } from '../shared/src/constants';
 
 /**
- * `npm run build` produces one self-contained file, app/dist/last-tile-standing.html: JS, CSS, the engine worker
+ * `npm run build` produces one self-contained file, app/dist/platforman.html: JS, CSS, the engine worker
  * (inlined as a blob) and multipliers.json are all embedded, so it runs from file:// with no network.
  */
 export default defineConfig({

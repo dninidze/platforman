@@ -27,8 +27,12 @@ const prefixOk = (derived: number[][], observed: number[][]) =>
  * Recomputes the hash and all three sequences offline with Web Crypto (crypto.subtle), an
  * implementation independent of the engine's own derivation, and compares them with the round log.
  */
-export function FairnessModal({ s, client, onClose }: { s: GameState; client: GameClient; onClose: () => void }) {
-  const [pick, setPick] = useState(() => s.revealed[0]?.roundId ?? s.history[0]?.roundId ?? '');
+export function FairnessModal({ s, client, onClose, roundId }: { s: GameState; client: GameClient; onClose: () => void; roundId?: string }) {
+  const [pick, setPick] = useState(() => roundId ?? s.revealed[0]?.roundId ?? s.history[0]?.roundId ?? '');
+  // Opened from "Recent rounds": show that round's details and verify it straight away.
+  useEffect(() => {
+    if (roundId) void verify(roundId);
+  }, [roundId]); // eslint-disable-line react-hooks/exhaustive-deps
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -74,7 +78,7 @@ export function FairnessModal({ s, client, onClose }: { s: GameState; client: Ga
     }
   }
 
-  const options = [...new Set([...s.revealed.map((r) => r.roundId), ...s.history.map((r) => r.roundId)])];
+  const options = [...new Set([...(roundId ? [roundId] : []), ...s.revealed.map((r) => r.roundId), ...s.history.map((r) => r.roundId)])];
 
   return (
     <div className="modal-bg" onClick={onClose}>

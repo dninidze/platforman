@@ -9,6 +9,8 @@ import {
   payout,
   STAGE_REMOVALS,
   countsChecksum,
+  roundHighlights,
+  type RoundHighlights,
   tileCapsFor,
   hardTileCap,
   type TileCaps,
@@ -49,6 +51,7 @@ export interface RoundSummary {
   survivors: number;
   players: number;
   endedAt: number;
+  highlights: RoundHighlights;
 }
 
 export interface RoomDeps {
@@ -338,6 +341,7 @@ export class Room {
     const jackpot = jackpotTile(this.permutations[2]);
     const sequences = this.permutations.map((p, i) => p.slice(0, STAGE_REMOVALS[i]));
     const survivors = [...core.players.values()].filter((p) => p.outcome === 'survived');
+    const highlights = roundHighlights(core.players.values());
     this.broadcast({
       t: 'roundEnd',
       seq: 0,
@@ -351,6 +355,7 @@ export class Room {
       jackpotTile: jackpot,
       emptiedAtStage: core.emptiedAtStage,
       survivorsPaid: survivors.map((p) => ({ nickname: maskName(this.nick(p.id)), amount: p.payout })),
+      highlights,
       phaseEndsAt: this.phaseEndsAt,
       serverTime: at,
     });
@@ -388,6 +393,7 @@ export class Room {
       survivors: survivors.length,
       players: this.audits.size,
       endedAt: at,
+      highlights,
     });
     this.history.length = Math.min(this.history.length, 50);
     this.emptyRounds = this.members.size === 0 ? this.emptyRounds + 1 : 0;

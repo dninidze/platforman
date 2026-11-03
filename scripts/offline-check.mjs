@@ -1,4 +1,4 @@
-// Opens dist/last-tile-standing.html from disk in headless Chrome/Edge with networking disabled
+// Opens dist/platforman.html from disk in headless Chrome/Edge with networking disabled
 // (DevTools offline emulation + an unreachable proxy + DNS mapped to nowhere) and checks, through the UI:
 //   - §0.2: <title> and header read "Last Tile Standing"; stage tabs read "Stage 1/2/3"
 //   - §0.1: no name prompt; a generated demo name is shown; a reload keeps it; "New demo identity"
@@ -15,7 +15,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { findBrowser, launch, sleep } from './browser.mjs';
 
 const appRoot = fileURLToPath(new URL('..', import.meta.url));
-const file = resolve(appRoot, 'dist/last-tile-standing.html');
+const file = resolve(appRoot, 'dist/platforman.html');
 if (!existsSync(file)) throw new Error('run `npm run build` first');
 const url = pathToFileURL(file).href;
 const browserPath = findBrowser(process.argv.find((a) => a.startsWith('--browser='))?.slice(10));
@@ -40,7 +40,7 @@ await open(url);
 const env = await b.evaluate(`({ online: navigator.onLine, secure: isSecureContext, webCrypto: !!crypto.subtle, title: document.title, header: document.querySelector('.brand')?.textContent.replace(/^[^A-Za-z]+/, '').trim(), prompt: !!document.querySelector('input#nick, .join-card input'), engine: window.__p3engine(), session: window.__p3session(), stages: [...document.querySelectorAll('.stage-pill')].map((p) => p.textContent) })`);
 log(`loaded: ${JSON.stringify({ ...env, session: { ...env.session, playerId: env.session.playerId.slice(0, 12) + '…' } })}`);
 check('networking disabled (navigator.onLine is false)', env.online === false);
-check('title and header are "Last Tile Standing"', env.title === 'Last Tile Standing' && env.header === 'Last Tile Standing', `${env.title} / ${env.header}`);
+check('title and header are "Platforman"', env.title === 'Platforman' && env.header === 'Platforman', `${env.title} / ${env.header}`);
 check('stage tabs read Vol. 1/2/3', env.stages.join(',') === 'Vol. 1,Vol. 2,Vol. 3', env.stages.join(','));
 check('no name prompt: opens straight into the room', !env.prompt);
 const name1 = await playerName();
@@ -81,10 +81,25 @@ check('own row first in the players list, marked "You"', /^You \(/.test(feed[0] 
 const tiles = await b.evaluate(`({ bands: [...new Set([...document.querySelectorAll('.board .tile')].map((t) => [...t.classList].find((c) => c.startsWith('band-'))))], gone: [...new Set([...document.querySelectorAll('.board .tile.band-gone .tile-count')].map((x) => x.textContent))] })`);
 check('tiles carry traffic-light bands; gone tiles show only ×', tiles.bands.every((x) => /^band-(green|yellow|full|gone)$/.test(x)) && tiles.gone.join('') === '×', `${tiles.bands.join(',')} / ${tiles.gone.join('')}`);
 await b.waitFor(`/Round over/.test(document.querySelector('.mstatus')?.textContent || '')`, 300_000, 'round end');
-const end = await b.evaluate(`({ message: document.querySelector('.mstatus')?.textContent, covered: !!document.querySelector('.board .overlay'), history: document.querySelector('.history li')?.textContent })`);
+const end = await b.evaluate(`({ message: document.querySelector('.mstatus')?.textContent, covered: !!document.querySelector('.board .overlay'), history: [...(document.querySelector('.rounds tbody tr')?.children ?? [])].map((td) => td.textContent), heads: [...document.querySelectorAll('.rounds th')].map((th) => th.textContent) })`);
 log(`round over: ${JSON.stringify(end)}`);
 check('round played to the end; result in the status line, board not covered', /Round over/.test(end.message ?? '') && !end.covered && !!end.history, end.message);
-check('round history uses the Vol. label', /Vol\. \d|won 10,000x/.test(end.history ?? ''), end.history);
+check(
+  'Recent rounds: Round id | Round max | Top man | Top cashout',
+  end.heads.join('|') === 'Round id|Round max|Top man|Top cashout' &&
+    /^#\d+$/.test(end.history[0]) &&
+    end.history[1] === '10,000x' &&
+    /^(\d[\d,.]*x n\d+|–)$/.test(end.history[2]) &&
+    /^(\d[\d,.]*x \D?[\d,.]+|–)$/.test(end.history[3]),
+  end.history.join(' | '),
+);
+// The round id opens that round's details, already verified.
+await b.evaluate(`document.querySelector('.rounds tbody td button').click(), true`);
+await b.waitFor(`!!document.querySelector('.verdict')`, 10_000, 'round details');
+const details = await b.evaluate(`({ verdict: document.querySelector('.verdict').textContent, seed: [...document.querySelectorAll('.modal .kv code')].map((c) => c.textContent).find((t) => /^[0-9a-f]{64}$/.test(t)) })`);
+check('clicking a round id opens its details with a passing verification', details.verdict.includes('Verified') && !!details.seed, details.verdict);
+await b.evaluate(`document.querySelector('.modal-head button').click(), true`);
+await sleep(200);
 
 await b.evaluate(`document.querySelector('[aria-label="Provably fair: verify rounds"]').click(), true`);
 await b.waitFor(`!!document.querySelector('.verify-row select')`, 5_000, 'fairness modal');
@@ -94,7 +109,7 @@ await b.evaluate(`document.querySelector('.verify-row button').click(), true`);
 await b.waitFor(`!!document.querySelector('.verdict')`, 10_000, 'verdict');
 const verdict = await b.evaluate(`({ title: document.querySelector('#fair-title').textContent, verdict: document.querySelector('.verdict').textContent, checks: [...document.querySelectorAll('.checks li')].map((l) => l.textContent) })`);
 check('fairness verifier passes (Web Crypto) for the round played', verdict.verdict.includes('Verified') && verdict.checks.every((c) => c.startsWith('✔')), verdict.verdict);
-check('fairness modal titled with the game title', verdict.title.startsWith('Last Tile Standing'), verdict.title);
+check('fairness modal titled with the game title', verdict.title.startsWith('Platforman'), verdict.title);
 await b.evaluate(`document.querySelector('.modal-head button').click(), true`);
 
 // ---- new demo identity

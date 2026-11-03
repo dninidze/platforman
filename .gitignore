@@ -1,7 +1,7 @@
 node_modules/
 /packages/*/dist/
 /dist/*
-!/dist/last-tile-standing.html
+!/dist/platforman.html
 data/*
 !data/.gitkeep
 *.log

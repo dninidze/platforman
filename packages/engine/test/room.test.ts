@@ -1,4 +1,4 @@
-import { MULTIPLIERS_100, countsChecksum, tileBand, tileCapsFor, verifyRound } from '@p3/shared';
+import { DEFAULT_CONFIG, MULTIPLIERS_100, countsChecksum, roundHighlights, tileBand, tileCapsFor, verifyRound } from '@p3/shared';
 import { describe, expect, it } from 'vitest';
 import { flush, setupRoom } from './helpers';
 
@@ -355,7 +355,7 @@ describe('tile capacity (CHANGES_4 §3)', () => {
   });
 
   it('no limit while betting: 150 of 300 bets can stand on one tile', async () => {
-    const h = setupRoom({ tileCapPct: 10, tileCapacity: 0 });
+    const h = setupRoom({ tileCapPct: 10, tileYellowPct: 5, tileCapacity: 0 });
     const ids = Array.from({ length: 300 }, (_, i) => `p${i}`);
     h.join(...ids);
     for (let i = 0; i < 150; i++) expect((await h.room.bet(ids[i], 10, h.safeTile(1, 0))).ok).toBe(true);
@@ -366,7 +366,7 @@ describe('tile capacity (CHANGES_4 §3)', () => {
   });
 
   it('at round start the lock freezes at 10% of bets: moves onto locked tiles get TILE_FULL, over-full tiles keep their players', async () => {
-    const h = setupRoom({ tileCapPct: 10, tileCapacity: 0 });
+    const h = setupRoom({ tileCapPct: 10, tileYellowPct: 5, tileCapacity: 0 });
     const ids = Array.from({ length: 100 }, (_, i) => `p${i}`);
     h.join(...ids, 'late');
     const crowded = h.safeTile(1, 0);
@@ -403,5 +403,47 @@ describe('public players list', () => {
     expect(feed.bets[1]).toMatchObject({ state: 'alive', bet: 89 });
     expect(feed.stats).toMatchObject({ inRoom: 80, staked: ids.reduce((a, _, i) => a + 10 + i, 0), paid: 13, biggestWin: 13, biggestMultiplier: 1.01 });
     for (const b of feed.bets) expect(b.nickname).toMatch(/^pl\*\*\*\d$/);
+  });
+});
+
+describe('CHANGES_5 colour rule and round highlights', () => {
+  it('default: green at 0, yellow from 1 player, red/locked at ceil(5% of bets)', () => {
+    const c = tileCapsFor(300, DEFAULT_CONFIG.tileCapPct, DEFAULT_CONFIG.tileYellowPct, false);
+    expect(c).toMatchObject({ tileCap: 15, yellowFrom: 1 });
+    expect([0, 1, 14, 15, 40].map((n) => tileBand(n, false, c))).toEqual(['green', 'yellow', 'yellow', 'full', 'full']);
+    expect(tileCapsFor(10, 5, 0, false)).toMatchObject({ tileCap: 1, yellowFrom: 1 });
+  });
+
+  it('Top man = longest without cashing out; Top cashout = highest multiplier (ties: larger amount)', async () => {
+    const h = setupRoom();
+    h.join('early', 'late', 'c1', 'c2', 'c3');
+    const s1 = h.seqs()[0];
+    await h.room.bet('early', 100, s1[2]); // goes at removal 3 of Vol. 1
+    await h.room.bet('late', 100, s1[40]); // goes at removal 41 of Vol. 1
+    for (const id of ['c1', 'c2', 'c3']) await h.room.bet(id, id === 'c3' ? 500 : 100, h.safeTile(1));
+    h.clock.advanceTo(BET_END + 2 * 500);
+    h.room.cashout('c1'); // 1.02x
+    h.clock.advanceTo(BET_END + 5 * 500);
+    h.room.cashout('c2'); // 1.05x
+    h.room.cashout('c3'); // 1.05x, larger amount
+    h.clock.advance(300_000);
+    const end = h.of('roundEnd')[0];
+    expect(end.highlights).toEqual({
+      topMan: { multiplier: MULTIPLIERS_100[0][39] / 100, survived: 40 },
+      topCashout: { multiplier: 1.05, amount: 525 },
+    });
+    expect(h.room.history.at(-1)!.highlights).toEqual(end.highlights);
+  });
+
+  it('a lost player in Vol. 2 counts the 91 tiles of Vol. 1; a 10,000x winner is top man with n280', () => {
+    const players = [
+      { outcome: 'lost', resolvedStage: 2, resolvedK: 1, multiplier100: null, payout: 0 },
+      { outcome: 'lost', resolvedStage: 1, resolvedK: 1, multiplier100: null, payout: 0 },
+    ] as never[];
+    expect(roundHighlights(players)).toEqual({ topMan: { multiplier: 10.77, survived: 91 }, topCashout: null });
+    expect(roundHighlights([{ outcome: 'lost', resolvedStage: 1, resolvedK: 1, multiplier100: null, payout: 0 }] as never[]).topMan).toEqual({ multiplier: 1, survived: 0 });
+    const winner = [...players, { outcome: 'survived', resolvedStage: 3, resolvedK: 99, multiplier100: 1_000_000, payout: 100_000 }] as never[];
+    expect(roundHighlights(winner).topMan).toEqual({ multiplier: 10_000, survived: 280 });
+    expect(roundHighlights([])).toEqual({ topMan: null, topCashout: null });
   });
 });

@@ -4,6 +4,7 @@ import {
   decodeGoneMask,
   type HostSettings,
   type PlayerSession,
+  type RoundHighlights,
   type TileCaps,
   type HostStatsMsg,
   type RoundRecordMsg,
@@ -70,6 +71,7 @@ export interface HistoryEntry {
   jackpotTile: number;
   emptiedAtStage: Stage | null;
   survivors: number;
+  highlights: RoundHighlights;
 }
 
 /** A revealed round plus what this client saw before the reveal. */
@@ -423,6 +425,7 @@ export class GameClient {
           jackpotTile: m.jackpotTile,
           emptiedAtStage: m.emptiedAtStage,
           survivors: m.survivorsPaid.length,
+          highlights: m.highlights,
         };
         this.set({
           offset: m.serverTime - Date.now(),

@@ -1,5 +1,5 @@
-/** User-visible game title (spec §0.2). */
-export const GAME_TITLE = 'Last Tile Standing';
+/** User-visible game title (spec §0.2, CHANGES_5 §4). */
+export const GAME_TITLE = 'Platforman';
 /** Label for the three stages: "Vol. 1 / Vol. 2 / Vol. 3" (CHANGES_4 §1). */
 export const STAGE_LABEL = 'Vol.';
 export const stageName = (stage: number) => `${STAGE_LABEL} ${stage}`;
@@ -23,11 +23,11 @@ export interface GameConfig {
   /** Fixed maximum players per tile; 0 = no fixed maximum (CHANGES_4 §3 removed the old 99). */
   tileCapacity: number;
   /**
-   * CHANGES_4 §3: when the round starts, a tile with this percentage of the bets (or more) is locked.
+   * CHANGES_5 §3: when the round starts, a tile with this percentage of the bets (or more) is locked.
    * 0 disables the dynamic lock (then only tileCapacity applies).
    */
   tileCapPct: number;
-  /** Tiles turn yellow from this percentage of the bets. */
+  /** Tiles turn yellow from this percentage of the bets (0 = from the first player). */
   tileYellowPct: number;
   roomSoftCap: number;
   /** Money values are integer minor units (cents). */
@@ -55,8 +55,8 @@ export const DEFAULT_CONFIG: GameConfig = {
   resultsMs: 4_000,
   moveLockMs: 0,
   tileCapacity: 0,
-  tileCapPct: 10,
-  tileYellowPct: 5,
+  tileCapPct: 5,
+  tileYellowPct: 0,
   roomSoftCap: 2_000,
   minBet: 10,
   maxBet: 10_000,
