@@ -118,14 +118,14 @@ dist/             platforman.html (committed); data/ holds local run outputs (gi
   * Right: **Recent rounds** (below), rooms, how to play.
 * **Nudge** (`spec/CHANGES_5.md` §2). Tapping a tile while not in the game (no bet, cashed out or lost) pulses
   the bet section's frame yellow, pointing at "Place bet on random tile for next round".
-* **Recent rounds** ( §5 and §5a).
+* **Recent rounds** (`spec/CHANGES_5.md` §5 and §5a).
   * The header says once that every round pays up to 10,000x.
-  * Each row shows the round (), **Lasted longest** and **Best cashout**. Lasted longest is the
+  * Each row shows the round (`#12`), **Lasted longest** and **Best cashout**. Lasted longest is the
     multiplier the longest-lasting non-cashed player stood at, with the Vol. and tile they reached (e.g.
     "Vol. 3 · tile 24") and a thin bronze/silver/gold bar across the three Vols. Best cashout is the highest
     multiplier cashed out, with its amount.
   * The whole row opens the round's details with its verification already run.
-  * The engine computes the figures at round end ();  maps tiles survived
+  * The engine computes the figures at round end (`roundHighlights`); `volProgress` maps tiles survived
     to Vol. and tile.
 * **Resurrection** never covers the board. Surviving tiles keep their counts and glow, returning tiles rise
   back in, survivors can move or cash out, and the status line announces it.
