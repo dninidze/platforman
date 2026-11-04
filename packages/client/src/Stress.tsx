@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { GameClient, GameState } from './net';
 import { store } from './net';
 
-/** Settings drawer: bot count, busy-server demo, overlay, wallet reset, log download. */
+/** Settings drawer: bot count (one room, CHANGES_6 §2), overlay, wallet reset, log download. */
 export function SettingsPanel({
   s,
   client,
@@ -21,12 +21,10 @@ export function SettingsPanel({
 }) {
   const st = s.settings;
   const [bots, setBots] = useState(String(st?.bots ?? 300));
-  const [cap, setCap] = useState(String(st?.roomSoftCap ?? 2000));
   useEffect(() => setBots(String(st?.bots ?? 300)), [st?.bots]);
-  useEffect(() => setCap(String(st?.roomSoftCap ?? 2000)), [st?.roomSoftCap]);
 
   const applyBots = (n: number) => {
-    const v = Math.max(0, Math.min(9_900, Math.round(n || 0)));
+    const v = Math.max(0, Math.min(1_000, Math.round(n || 0)));
     setBots(String(v));
     store.set('p3.bots', String(v));
     client.updateSettings({ bots: v });
@@ -51,38 +49,18 @@ export function SettingsPanel({
           </button>
         </div>
         <div className="setting">
-          <label htmlFor="bots">Simulated players (0–9,900)</label>
+          <label htmlFor="bots">Simulated players (0–1,000)</label>
           <div className="setting-row">
-            <input id="bots" type="range" min={0} max={9900} step={100} value={Number(bots) || 0} onChange={(e) => setBots(e.target.value)} onMouseUp={() => applyBots(Number(bots))} onTouchEnd={() => applyBots(Number(bots))} onKeyUp={() => applyBots(Number(bots))} />
+            <input id="bots" type="range" min={0} max={1000} step={10} value={Number(bots) || 0} onChange={(e) => setBots(e.target.value)} onMouseUp={() => applyBots(Number(bots))} onTouchEnd={() => applyBots(Number(bots))} onKeyUp={() => applyBots(Number(bots))} />
             <input className="num" inputMode="numeric" value={bots} onChange={(e) => setBots(e.target.value)} onBlur={() => applyBots(Number(bots))} onKeyDown={(e) => e.key === 'Enter' && applyBots(Number(bots))} aria-label="Simulated players" />
           </div>
           <div className="chips">
-            {[0, 300, 2_500, 9_900].map((n) => (
+            {[0, 300, 600, 1_000].map((n) => (
               <button key={n} className="chip" onClick={() => applyBots(n)}>
                 {n.toLocaleString()}
               </button>
             ))}
           </div>
-        </div>
-        <div className="setting">
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={!!st?.busyServer}
-              onChange={(e) => {
-                store.set('p3.busy', e.target.checked ? '1' : '0');
-                client.updateSettings({ busyServer: e.target.checked });
-              }}
-            />
-            Simulate busy server (open a new room every <b>{Number(cap).toLocaleString()}</b> players)
-          </label>
-          <div className="setting-row">
-            <label htmlFor="cap" className="muted small">
-              roomSoftCap
-            </label>
-            <input id="cap" className="num" inputMode="numeric" value={cap} onChange={(e) => setCap(e.target.value)} onBlur={() => client.updateSettings({ roomSoftCap: Number(cap) || 2000 })} />
-          </div>
-          <p className="muted small">Rooms now: {s.rooms.map((r) => `${r.roomId} (${r.players.toLocaleString()})`).join(', ')}</p>
         </div>
         <div className="setting">
           <label className="check">
@@ -188,7 +166,7 @@ export function StressOverlay({ s, client }: { s: GameState; client: GameClient 
   });
 
   const start = () => {
-    client.updateSettings({ bots: 9_900 });
+    client.updateSettings({ bots: 1_000 });
     client.metrics.delivery.length = 0;
     rec.current = {
       start: performance.now(),
@@ -252,14 +230,14 @@ export function StressOverlay({ s, client }: { s: GameState; client: GameClient 
         sync: {client.metrics.ticks} ticks, {client.metrics.checksumMismatches} mismatches
       </div>
       <div>
-        engine busy {fmt((hs?.engineBusy ?? 0) * 100)}% · bots {hs?.bots ?? 0} · rooms {hs?.rooms.length ?? 0}
+        engine busy {fmt((hs?.engineBusy ?? 0) * 100)}% · bots {hs?.bots ?? 0}
       </div>
       <div className="perf-row">
         {!recording ? (
           <>
             <input className="num" value={rounds} onChange={(e) => setRounds(e.target.value)} aria-label="Rounds to record" />
             <button className="chip" onClick={start}>
-              Stress test (9,900 bots)
+              Stress test (1,000 bots)
             </button>
           </>
         ) : (
