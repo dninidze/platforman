@@ -1370,3 +1370,244 @@ code {
   grid-template-columns: minmax(0, 1fr);
   justify-content: stretch;
 }
+
+/* ======================================================================================
+   CHANGES_7: compact header + settings menu, dev panel, loading screen, tiles, compact lower boxes,
+   mobile side toggles. Declared last so these rules win.
+   ====================================================================================== */
+.app {
+  padding-top: 0;
+}
+.header {
+  height: 44px;
+  padding: 0;
+  margin-bottom: 8px;
+  gap: 12px;
+}
+.brand {
+  font-size: 1.05rem;
+}
+.hbalance {
+  margin-left: auto;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--win);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 12px;
+  white-space: nowrap;
+}
+.settings {
+  position: relative;
+}
+.settings-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 10px 3px 3px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.settings-btn:hover {
+  border-color: #6b6f76;
+}
+.avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, var(--gold-1), var(--gold-2));
+  color: #111;
+  font-weight: 800;
+  font-size: 0.8rem;
+}
+.avatar.big {
+  width: 38px;
+  height: 38px;
+  font-size: 1rem;
+}
+.caret {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+.menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 50;
+  width: 240px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  padding: 6px;
+}
+.menu-head {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 8px 10px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 4px;
+}
+.menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+.menu-item:hover,
+.menu-item:focus-visible {
+  background: var(--panel-2);
+}
+.dev-panel {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 40;
+  width: min(360px, calc(100vw - 32px));
+  max-height: calc(100vh - 80px);
+  overflow: auto;
+  background: var(--panel);
+  border: 1px solid #4a4d53;
+  border-radius: 10px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  padding: 10px 14px;
+}
+/* loading screen over the board */
+.board-wrap {
+  position: relative;
+}
+.loading {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: rgba(13, 14, 16, 0.94);
+  border-radius: 6px;
+}
+.loading-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 2rem;
+  font-weight: 800;
+}
+.loading-logo .logo {
+  font-size: 2.3rem;
+}
+.loading-bar {
+  width: 60%;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  overflow: hidden;
+}
+.loading-bar span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--gold-2), var(--gold-1));
+}
+/* tiles: system bold font with the outline (Montserrat's variable outlines show inner lines under a stroke) */
+.tile-count {
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+}
+.you-badge {
+  top: 0;
+  height: calc(50% - 0.6em);
+  display: flex;
+  align-items: center;
+  font-size: 0.62rem;
+  font-weight: 800;
+  line-height: 1;
+}
+/* compact lower boxes */
+.under {
+  grid-auto-rows: 100px;
+}
+.mbox,
+.betbox {
+  height: 100px;
+}
+.mbox {
+  grid-template-rows: minmax(0, 1fr) auto;
+  padding: 6px 10px;
+}
+.mbox .mult {
+  font-size: 2.1rem;
+}
+.mbox .stage-pill {
+  font-size: 0.62rem;
+  padding: 0 6px;
+}
+.betbox {
+  grid-template-rows: minmax(0, 1fr) 34px;
+  gap: 6px;
+  padding: 6px;
+}
+.betbox .amount-row {
+  height: 34px;
+}
+.side-toggles {
+  display: none;
+}
+@media (max-width: 1099px) {
+  .side-toggles {
+    display: flex;
+    gap: 8px;
+  }
+  .side-toggle {
+    flex: 1;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+  .side-toggle.on {
+    background: var(--panel-2);
+    border-color: #6b6f76;
+  }
+  .left-col,
+  .right-col {
+    display: none;
+  }
+  .left-col.side-open,
+  .right-col.side-open {
+    display: block;
+  }
+}
+@media (max-width: 560px) {
+  .header {
+    flex-wrap: nowrap;
+  }
+  .brand {
+    font-size: 0.95rem;
+  }
+  .settings-name {
+    display: none;
+  }
+  .under {
+    grid-auto-rows: 100px;
+  }
+}
+.betbox .amount-row .amount-group input.amount {
+  width: 100%;
+  min-width: 0;
+  flex: none;
+}

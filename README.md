@@ -9,7 +9,9 @@ three stages (named by `STAGE_NAMES`: **10x / 100x / 10kx**): the board is resur
 and anyone still standing on the last tile of the 10kx stage is paid **10,778x** (flat 3% house edge, capped at
 €10,000 per bet). Play money only.
 
-> **Current behaviour: `../spec/CHANGES_6.md`.** It supersedes the older notes further down where they differ:
+> **Current behaviour: `../spec/CHANGES_7.md` on top of `../spec/CHANGES_6.md`.** CHANGES_7: an emptied board finishes only its stage (survivors framed); live bets list live, then cashed out, then crashed, with tiles survived; Top man includes cash-outs; 5 s loading screen between rounds; bet steps 0.10 / 1 / 5 up to 100; "Cash out" button; compact header with a Dicador-style settings menu and dev panel; side sections behind toggles on narrow screens.
+>
+> CHANGES_6 (still current where CHANGES_7 does not change it): It supersedes the older notes further down where they differ:
 > multipliers from `Platforman math 031126 ZI.xlsx` (0.98x … 10,778x, RTP 96.30–97.37% per cash-out point,
 > 97.00% riding to the end; cash-out below 1.00x allowed); one room for every player (no Rooms panel, no busy
 > server setting), 0–1,000 simulated players; tile lock at `max(1, round(3% × bets))`; an emptied board plays on
@@ -34,7 +36,7 @@ works with networking disabled (checked with `npm run check:offline`, below).
    "New demo identity".
 2. During betting, tap a tile, set an amount and press **Bet**. Tap another tile to move.
 3. While tiles go, press **Cash bet** before your tile goes Gone, or ride all three stages.
-4. **Settings**: number of simulated players (0–1,000, default 300), performance overlay with the stress
+4. **Settings menu → Dev panel**: number of simulated players (0–1,000, default 300), performance overlay with the stress
    test, reset balance, download the round log (JSONL).
 5. **Fair**: verify any finished round offline with Web Crypto.
 

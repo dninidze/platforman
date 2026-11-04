@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { GameClient, GameState } from './net';
 import { store } from './net';
 
-/** Settings drawer: bot count (one room, CHANGES_6 §2), overlay, wallet reset, log download. */
+/** Dev panel (CHANGES_7 §9): floating, closable; bot count, overlay and stress test, wallet reset, identity, log. */
 export function SettingsPanel({
   s,
   client,
@@ -40,11 +40,11 @@ export function SettingsPanel({
   };
 
   return (
-    <div className="modal-bg" onClick={onClose}>
-      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="set-title" onClick={(e) => e.stopPropagation()}>
+    <aside className="dev-panel" aria-label="Dev panel">
+      <div>
         <div className="modal-head">
-          <h2 id="set-title">Settings</h2>
-          <button className="link" onClick={onClose} aria-label="Close">
+          <h2 id="set-title">Dev panel</h2>
+          <button className="link" onClick={onClose} aria-label="Close the dev panel">
             ✕
           </button>
         </div>
@@ -93,7 +93,7 @@ export function SettingsPanel({
           {s.transport}. Everything runs in this page; nothing is sent over the network.
         </p>
       </div>
-    </div>
+    </aside>
   );
 }
 

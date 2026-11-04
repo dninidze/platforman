@@ -50,6 +50,7 @@ export interface PublicConfig extends Pick<
   | 'bettingMs'
   | 'intermissionMs'
   | 'resultsMs'
+  | 'loadingMs'
   | 'moveLockMs'
   | 'tileCapacity'
   | 'tileCapPct'
