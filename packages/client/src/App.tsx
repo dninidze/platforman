@@ -13,7 +13,6 @@ import {
   stageName,
   tileBand,
   tileCapsFor,
-  volProgress,
   type TileCaps,
   type KeyValueStore,
 } from '@p3/shared';
@@ -601,92 +600,46 @@ function PlayersPanel({ s, sym }: { s: GameState; sym: string }) {
   );
 }
 
-const VOL_LEN = [91, 90, 99];
-
-/** "Vol. 3 · tile 24" under the survivor's multiplier; plain phrases at the edges. */
-function survivorPlace(survived: number): string {
-  const p = volProgress(survived);
-  if (survived >= 280) return 'Survived all 3 Vols';
-  if (survived === 0) return 'Gone on the first tile';
-  if (p.tile === 0) return `Cleared ${stageName(p.vol - 1)}`;
-  return `${stageName(p.vol)} · tile ${p.tile}`;
-}
-
-/**
- * Right column: "Recent rounds" (CHANGES_5 §5, hybrid layout). Round max sits once in the header; each row
- * shows the longest survivor (multiplier, Vol. and tile, and a bronze/silver/gold bar across the three Vols)
- * and the best cashout. The whole row opens the round's details and verification.
- */
+/** Right column: "Recent rounds" (CHANGES_5 §5). Round ids open the round's details and verification. */
 function RecentRounds({ s, sym, onOpen }: { s: GameState; sym: string; onOpen: (roundId: string) => void }) {
   return (
-    <div className="panel recent">
+    <div className="panel">
       <h2>Recent rounds</h2>
-      <p className="rr-sub">
-        Every round pays up to <span className="gold">10,000x</span>
-      </p>
-      <div className="rr-legend" aria-hidden="true">
-        {METAL.map((m, i) => (
-          <span key={m} className={`metal-${m}`}>
-            {stageName(i + 1)}
-          </span>
-        ))}
-      </div>
-      <div className="rr-row rr-head" aria-hidden="true">
-        <span>Round</span>
-        <span>Lasted longest</span>
-        <span>Best cashout</span>
-      </div>
-      <ul className="rr-list">
-        {s.history.slice(0, 15).map((h) => {
-          const tm = h.highlights?.topMan;
-          const tc = h.highlights?.topCashout;
-          const prog = tm ? volProgress(tm.survived) : null;
-          const place = tm ? survivorPlace(tm.survived) : '';
-          return (
-            <li key={h.roundId}>
-              <button
-                className="rr-row"
-                onClick={() => onOpen(h.roundId)}
-                title={`${h.roundId}: details and verification`}
-                aria-label={`Round ${h.roundId}. Lasted longest: ${tm ? `${formatMultiplier(tm.multiplier)}, ${place}` : 'none'}. Best cashout: ${tc ? `${formatMultiplier(tc.multiplier)}, ${sym}${formatMoney(tc.amount)}` : 'none'}. Open details.`}
-              >
-                <span className="rr-id">#{h.roundId.split('#')[1]}</span>
-                <span className="rr-cell">
-                  {tm && prog ? (
-                    <>
-                      <span className="rr-big">{formatMultiplier(tm.multiplier)}</span>
-                      <span className="rr-detail">{place}</span>
-                      <span className="rr-bar" aria-hidden="true">
-                        {VOL_LEN.map((len, i) => (
-                          <span key={i} className={`rr-seg metal-${METAL[i]}`} style={{ flex: len }}>
-                            <i style={{ width: `${Math.round((prog.filled[i] / len) * 100)}%` }} />
-                          </span>
-                        ))}
-                      </span>
-                    </>
-                  ) : (
-                    <span className="rr-detail">–</span>
-                  )}
-                </span>
-                <span className="rr-cell">
-                  {tc ? (
-                    <>
-                      <span className="rr-big win">{formatMultiplier(tc.multiplier)}</span>
-                      <span className="rr-detail">
-                        {sym}
-                        {formatMoney(tc.amount)}
-                      </span>
-                    </>
-                  ) : (
-                    <span className="rr-detail">–</span>
-                  )}
-                </span>
-              </button>
-            </li>
-          );
-        })}
-        {s.history.length === 0 && <li className="muted rr-empty">No rounds yet</li>}
-      </ul>
+      <table className="rounds">
+        <thead>
+          <tr>
+            <th scope="col">Round id</th>
+            <th scope="col">Round max</th>
+            <th scope="col">Top man</th>
+            <th scope="col">Top cashout</th>
+          </tr>
+        </thead>
+        <tbody>
+          {s.history.slice(0, 15).map((h) => {
+            const tm = h.highlights?.topMan;
+            const tc = h.highlights?.topCashout;
+            return (
+              <tr key={h.roundId}>
+                <td>
+                  <button className="link" onClick={() => onOpen(h.roundId)} title={`${h.roundId}: details and verification`}>
+                    #{h.roundId.split('#')[1]}
+                  </button>
+                </td>
+                <td className="gold">10,000x</td>
+                <td>{tm ? `${formatMultiplier(tm.multiplier)} n${tm.survived}` : '–'}</td>
+                <td>{tc ? `${formatMultiplier(tc.multiplier)} ${sym}${formatMoney(tc.amount)}` : '–'}</td>
+              </tr>
+            );
+          })}
+          {s.history.length === 0 && (
+            <tr>
+              <td colSpan={4} className="muted">
+                No rounds yet
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
     </div>
   );
 }
