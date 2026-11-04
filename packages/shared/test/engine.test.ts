@@ -60,7 +60,7 @@ describe('RoundCore', () => {
     expect(c.onBoard).toBe(0);
   });
 
-  it('plays three stages, resurrects tiles and pays survivors 10,000x', () => {
+  it('plays three stages, resurrects tiles and pays survivors the top multiplier (10,778x)', () => {
     const c = core();
     c.placeBet('rider', 10, survivorTile(1));
     c.startRunning();
@@ -83,7 +83,7 @@ describe('RoundCore', () => {
     }
     expect(c.phase).toBe('ended');
     const p = c.players.get('rider')!;
-    expect(p.payout).toBe(100_000);
+    expect(p.payout).toBe(payout(10, MULTIPLIERS_100[2][98])); // 10 cents x 10,778
     expect(p.outcome).toBe('survived');
     expect(c.emptiedAtStage).toBeNull();
   });
@@ -106,7 +106,7 @@ describe('RoundCore', () => {
       }
       if (r.stageComplete) break;
     }
-    // 100.00 EUR x 104.46 >= 10,000 EUR only on the last stage-2 tile.
+    // 100.00 EUR x 107 >= 10,000 EUR only on the last stage-2 tile (97.98x one tile before).
     expect(forcedAt).toBe(90);
     const w = c.players.get('whale')!;
     expect(w.payout).toBe(1_000_000);
@@ -133,7 +133,7 @@ describe('RoundCore', () => {
     c.startRunning();
     c.tick();
     c.tick();
-    expect(c.potentialWin(c.players.get('a')!)).toBe(payout(250, 102));
+    expect(c.potentialWin(c.players.get('a')!)).toBe(payout(250, MULTIPLIERS_100[0][1]));
   });
 });
 

@@ -54,22 +54,22 @@ function replay(msgs: ServerMessage[]) {
 }
 
 describe('LocalHost (in-page engine)', () => {
-  it('9,900 bots: the client-side board matches the engine on every tick; capacity holds', async () => {
-    const h = setup({ bots: 9_900 });
+  it('1,000 bots (the cap): the client-side board matches the engine on every tick', async () => {
+    const h = setup({ bots: 1_000 });
     const a = h.client();
     const b = h.client();
     a.ep.receive({ t: 'join', playerId: 'p:alice', displayName: 'alice' });
     b.ep.receive({ t: 'join', playerId: 'p:bob', displayName: 'bob' });
     await flush();
     const room = h.host.manager.get('EUR-1')!;
-    expect(room.members.size).toBe(9_902);
+    expect(room.members.size).toBe(1_002);
     await h.run(10_000 + 91 * 500 + 3_000 + 20 * 500);
     const ra = replay(a.msgs);
     const rb = replay(b.msgs);
     expect(ra.checked).toBeGreaterThan(90);
     expect(ra.mismatches).toBe(0);
     expect(rb.mismatches).toBe(0);
-    expect(ra.maxCount).toBeGreaterThan(99); // CHANGES_4: no fixed maximum while betting
+    expect(ra.maxCount).toBeGreaterThan(0);
     // Both connections saw the same removals and multipliers.
     const ticks = (msgs: ServerMessage[]) => msgs.filter((m) => m.t === 'tick').map((m) => m.t === 'tick' && [m.tileGone, m.multiplier]);
     expect(ticks(a.msgs)).toEqual(ticks(b.msgs));
@@ -77,11 +77,11 @@ describe('LocalHost (in-page engine)', () => {
     // Thresholds froze at round start from the bets on the board.
     const frozen = a.of('roundState').find((m) => m.phase === 'running')!.caps;
     expect(frozen.live).toBe(false);
-    expect(frozen.tileCap).toBe(Math.ceil(frozen.playerBase / 20)); // CHANGES_5: lock at 5% of bets
+    expect(frozen.tileCap).toBe(Math.round((frozen.playerBase * 3) / 100)); // CHANGES_6: lock at 3% of bets
     expect(frozen.yellowFrom).toBe(1);
-    expect(frozen.playerBase).toBeGreaterThan(9_000);
+    expect(frozen.playerBase).toBeGreaterThan(900);
     const feed = a.of('liveFeed').at(-1)!;
-    expect(feed.totals.players).toBeGreaterThan(9_000);
+    expect(feed.totals.players).toBeGreaterThan(900);
     expect(feed.totals.cashedOut).toBeGreaterThan(0);
     // Every name in every public list is masked; bot names come from the player name generator.
     const names = a.of('liveFeed').flatMap((f) => f.topCashouts.map((c) => c.nickname));
@@ -107,33 +107,22 @@ describe('LocalHost (in-page engine)', () => {
     expect(c2.of('welcome')[0].balance).toBe(100_000);
   });
 
-  it('"simulate busy server" opens more rooms once bots pass roomSoftCap; off puts everyone back in one', async () => {
-    const h = setup({ bots: 2_500 });
+  it('one room for everyone: busy-server settings are ignored (CHANGES_6 §2)', async () => {
+    const h = setup({ bots: 1_000 });
     const c = h.client();
     c.ep.receive({ t: 'join', playerId: 'p:me', displayName: 'me' });
     await flush();
-    expect(h.host.manager.list().map((r) => r.players)).toEqual([2_501]);
-    c.ep.receive({ t: 'settings', busyServer: true, roomSoftCap: 2_000 });
+    c.ep.receive({ t: 'settings', busyServer: true, roomSoftCap: 10 });
     await flush();
-    const busy = h.host.manager.list();
-    expect(busy.length).toBe(2);
-    expect(busy[0]).toMatchObject({ roomId: 'EUR-1', players: 2_000 });
-    expect(busy[1].players).toBe(501);
-    expect(c.of('rooms').at(-1)!.rooms).toHaveLength(2);
-    expect(h.host.manager.roomOf('p:me')!.id).toBe('EUR-1');
-    c.ep.receive({ t: 'settings', busyServer: false });
-    await flush();
-    expect(h.host.manager.get('EUR-1')!.members.size).toBe(2_501);
-    // The emptied room closes after three empty rounds.
-    await h.run(3 * 40_000, 200);
-    expect(h.host.manager.list()).toHaveLength(1);
-  }, 60_000);
+    expect(h.host.manager.list().map((r) => r.players)).toEqual([1_001]);
+    expect(h.host.settings.busyServer).toBe(false);
+  });
 
-  it('bot count is adjustable from 0 to 9,900', async () => {
+  it('bot count is adjustable from 0 to 1,000', async () => {
     const h = setup({ bots: 300 });
     expect(h.host.bots.count).toBe(300);
     h.host.applySettings({ bots: 50_000 });
-    expect(h.host.bots.count).toBe(9_900);
+    expect(h.host.bots.count).toBe(1_000);
     h.host.applySettings({ bots: 0 });
     expect(h.host.bots.count).toBe(0);
     expect(h.host.manager.get('EUR-1')!.members.size).toBe(0);

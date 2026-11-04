@@ -3,7 +3,7 @@
  *
  *   npm run sim -- [--rounds 1000000] [--workers N] [--seed hex] [--verbose] [--csv path]
  *
- * Strategies (one player each per round, bet = 1.00):
+ * Strategies (one player each per round, bet = 0.50):
  *   - cash out after the k-th removal of stage s, for every (s, k)   (280 strategies)
  *   - random walk: random target among those 280 points, hops to a random tile with p=0.5 each tick
  *   - ride: never cash out (only the 10,000x survivor pays)
@@ -28,7 +28,8 @@ import {
   type Stage,
 } from '@p3/shared';
 
-const BET = 100;
+// €0.50: even 10,778x stays under the €10,000 max win per bet, so the sim measures the uncapped table.
+const BET = 50;
 const POINTS: { stage: Stage; k: number }[] = [];
 for (let s = 1; s <= 3; s++) for (let k = 1; k <= STAGE_REMOVALS[s - 1]; k++) POINTS.push({ stage: s as Stage, k });
 const N_STRAT = POINTS.length + 2; // + random walk + ride

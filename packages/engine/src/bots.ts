@@ -49,6 +49,8 @@ export interface BotDeps {
 }
 
 const REACTION_MS = [40, 110, 200, 320];
+/** CHANGES_6 §2: one room, optimised for up to 1,000 players. */
+export const MAX_BOTS = 1_000;
 
 export class BotDriver {
   private readonly bots: Bot[] = [];
@@ -67,7 +69,7 @@ export class BotDriver {
   }
 
   setCount(n: number): void {
-    const target = Math.max(0, Math.min(9_900, Math.floor(n)));
+    const target = Math.max(0, Math.min(MAX_BOTS, Math.floor(n)));
     while (this.bots.length > target) this.remove(this.bots.pop()!);
     while (this.bots.length < target) {
       const i = this.bots.length;

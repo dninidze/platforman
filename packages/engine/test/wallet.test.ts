@@ -43,21 +43,21 @@ describe('room <-> wallet', () => {
     h.clock.advanceTo(10_000 + 500);
     h.wallet.failNextCredits = 2;
     const r = h.room.cashout('a');
-    expect(r).toMatchObject({ ok: true, amount: 1_010 });
+    expect(r).toMatchObject({ ok: true, amount: 980 }); // 0.98x after the first tile
     await flush();
     expect(await h.wallet.getBalance('a')).toBe(99_000);
     for (let i = 0; i < 5; i++) {
       h.clock.advance(1_000);
       await flush();
     }
-    expect(await h.wallet.getBalance('a')).toBe(99_000 + 1_010);
+    expect(await h.wallet.getBalance('a')).toBe(99_000 + 980);
     const failures = h.audit.events.filter((e) => e.kind === 'credit_failed');
     expect(failures).toHaveLength(2);
     expect(new Set(failures.map((f) => f.data.txId))).toEqual(new Set([`EUR-1#1:a:win`]));
     expect(h.wallet.ledger.filter((e) => e.kind === 'credit')).toHaveLength(1);
     // Replaying the same credit (e.g. after a crash) changes nothing.
-    expect(await h.wallet.credit('a', 1_010, 'EUR-1#1:a:win', 'EUR-1#1')).toMatchObject({ duplicate: true });
-    expect(await h.wallet.getBalance('a')).toBe(99_000 + 1_010);
+    expect(await h.wallet.credit('a', 980, 'EUR-1#1:a:win', 'EUR-1#1')).toMatchObject({ duplicate: true });
+    expect(await h.wallet.getBalance('a')).toBe(99_000 + 980);
   });
 
   it('ledger balances: staked - paid equals the player balance change over many rounds', async () => {

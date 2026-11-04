@@ -269,10 +269,16 @@ export class Room {
     for (const p of this.core.players.values()) this.sendYou(p.id);
   }
 
+  /** The board emptied: play the rest of the round fast (CHANGES_6 §5) and remember where it emptied. */
   private enterFast(stage: Stage, k: number): void {
     if (this.fast) return;
     this.fast = true;
     this.fastFrom = { stage, k };
+    if (this.core.emptiedAtStage === null) this.core.emptiedAtStage = stage;
+  }
+
+  private intermissionLength(): number {
+    return this.fast ? this.config.fastIntermissionMs : this.config.intermissionMs;
   }
 
   private doTick(at: number): void {
@@ -303,11 +309,13 @@ export class Room {
     if (r.losers.length || r.forced.length) this.feedDirty = true;
 
     if (r.stageComplete) {
-      if (r.stage === 3 || this.fast || core.onBoard === 0) {
+      // CHANGES_6 §5: an emptied board keeps going through the later stages until the last tile stands.
+      if (r.stage === 3) {
         if (core.phase !== 'ended') core.end();
         this.endRound(at);
       } else {
-        this.phaseEndsAt = at + this.config.intermissionMs;
+        if (core.onBoard === 0) this.enterFast(r.stage, r.k);
+        this.phaseEndsAt = at + this.intermissionLength();
         this.nextTickAt = null;
         this.broadcast({
           t: 'stageEnd',
@@ -490,17 +498,17 @@ export class Room {
     return { ok: true, amount: p.payout, multiplier: p.multiplier100! / 100, maxWin: p.outcome === 'maxWin' };
   }
 
-  /** After a cashout empties the board: fast-finish the stage, or end at once in intermission. */
+  /** After a cashout empties the board: play on fast to the last tile (CHANGES_6 §5). */
   private afterBoardChange(now: number): void {
     const core = this.core;
-    if (core.onBoard > 0) return;
-    if (core.phase === 'running' && !this.fast) {
+    if (core.onBoard > 0 || this.fast) return;
+    if (core.phase === 'running') {
       this.enterFast(core.stage, core.removed + 1);
       if (this.nextTickAt !== null) this.nextTickAt = Math.min(this.nextTickAt, now + this.config.fastTickMs);
       this.schedule();
     } else if (core.phase === 'intermission') {
-      core.end();
-      this.endRound(now);
+      this.enterFast(core.stage, STAGE_REMOVALS[core.stage - 1]);
+      if (this.phaseEndsAt !== null) this.phaseEndsAt = Math.min(this.phaseEndsAt, now + this.config.fastIntermissionMs);
       this.schedule();
     }
   }

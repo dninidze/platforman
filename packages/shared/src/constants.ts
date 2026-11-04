@@ -1,8 +1,8 @@
 /** User-visible game title (spec §0.2, CHANGES_5 §4). */
 export const GAME_TITLE = 'Platforman';
-/** Label for the three stages: "Vol. 1 / Vol. 2 / Vol. 3" (CHANGES_4 §1). */
-export const STAGE_LABEL = 'Vol.';
-export const stageName = (stage: number) => `${STAGE_LABEL} ${stage}`;
+/** The three stages are named by their prize level (CHANGES_6 §3). */
+export const STAGE_NAMES = ['10x', '100x', '10kx'] as const;
+export const stageName = (stage: number) => STAGE_NAMES[stage - 1] ?? `${stage}`;
 
 export const TILE_COUNT = 100;
 export const GRID_SIZE = 10;
@@ -17,13 +17,15 @@ export interface GameConfig {
   fastTickMs: number;
   bettingMs: number;
   intermissionMs: number;
+  /** Resurrection pause while an emptied board plays on to the last tile (CHANGES_6 §5). */
+  fastIntermissionMs: number;
   resultsMs: number;
   /** Move lock before each removal (BUILD_SPEC §3.4). 0 = disabled (CHANGES_3 §1). */
   moveLockMs: number;
   /** Fixed maximum players per tile; 0 = no fixed maximum (CHANGES_4 §3 removed the old 99). */
   tileCapacity: number;
   /**
-   * CHANGES_5 §3: when the round starts, a tile with this percentage of the bets (or more) is locked.
+   * CHANGES_6 §4: when the round starts, a tile with this percentage of the bets (rounded half up) is locked.
    * 0 disables the dynamic lock (then only tileCapacity applies).
    */
   tileCapPct: number;
@@ -49,13 +51,14 @@ export interface GameConfig {
 
 export const DEFAULT_CONFIG: GameConfig = {
   tickMs: 500,
-  fastTickMs: 200,
+  fastTickMs: 50,
   bettingMs: 10_000,
   intermissionMs: 3_000,
+  fastIntermissionMs: 300,
   resultsMs: 4_000,
   moveLockMs: 0,
   tileCapacity: 0,
-  tileCapPct: 5,
+  tileCapPct: 3,
   tileYellowPct: 0,
   roomSoftCap: 2_000,
   minBet: 10,
@@ -83,10 +86,10 @@ export interface TileCaps {
 /** Hard per-tile maximum from config (0 = none). */
 export const hardTileCap = (tileCapacity: number) => (tileCapacity > 0 ? tileCapacity : Number.POSITIVE_INFINITY);
 
-/** CHANGES_4 §3: lock at max(1, ceil(capPct% × bets)), yellow from max(1, ceil(yellowPct% × bets)). */
+/** CHANGES_6 §4: lock at max(1, round(capPct% × bets)), yellow from max(1, round(yellowPct% × bets)); half up. */
 export function tileCapsFor(bets: number, capPct: number, yellowPct: number, live: boolean): TileCaps {
-  const tileCap = Math.max(1, Math.ceil((bets * capPct) / 100));
-  const yellowFrom = Math.min(tileCap, Math.max(1, Math.ceil((bets * yellowPct) / 100)));
+  const tileCap = Math.max(1, Math.round((bets * capPct) / 100));
+  const yellowFrom = Math.min(tileCap, Math.max(1, Math.round((bets * yellowPct) / 100)));
   return { playerBase: bets, tileCap, yellowFrom, live };
 }
 

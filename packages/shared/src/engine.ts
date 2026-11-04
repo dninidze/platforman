@@ -217,7 +217,7 @@ export class RoundCore {
           this.settle(p, m100, 'survived');
           survivors.push(p);
         }
-        if (survivors.length === 0) this.emptiedAtStage = 3;
+        if (survivors.length === 0 && this.emptiedAtStage === null) this.emptiedAtStage = 3;
         this.phase = 'ended';
       } else {
         // Resurrection: all tiles come back as soon as intermission starts; survivors keep their tiles.

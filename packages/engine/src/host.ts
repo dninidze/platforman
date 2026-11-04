@@ -111,8 +111,9 @@ export class LocalHost {
 
   constructor(opts: HostOptions = {}) {
     this.clock = opts.clock ?? new InstrumentedClock();
-    this.settings = { bots: 300, busyServer: false, roomSoftCap: 2_000, ...opts.settings };
-    this.config = makeConfig({ ...opts.config, roomSoftCap: this.softCap() });
+    // CHANGES_6 §2: one room for everyone; busyServer / roomSoftCap are accepted but ignored.
+    this.settings = { bots: 300, ...opts.settings, busyServer: false, roomSoftCap: SINGLE_ROOM_CAP };
+    this.config = makeConfig({ ...opts.config, roomSoftCap: SINGLE_ROOM_CAP });
     this.wallet = new MockWallet(this.config.startingBalance, this.config.currency);
     this.manager = new RoomManager({
       config: this.config,
@@ -141,10 +142,6 @@ export class LocalHost {
     this.lastStatsAt = this.clock.now();
     const statsMs = opts.statsMs ?? 1_000;
     if (statsMs > 0) this.statsTimer = this.clock.setInterval(() => this.pushStats(), statsMs);
-  }
-
-  private softCap(): number {
-    return this.settings.busyServer ? this.settings.roomSoftCap : SINGLE_ROOM_CAP;
   }
 
   connect(send: (msg: ServerMessage) => void): HostEndpoint {
@@ -180,11 +177,6 @@ export class LocalHost {
   }
 
   applySettings(p: Partial<HostSettings>): void {
-    const before = this.softCap();
-    if (p.roomSoftCap !== undefined && Number.isFinite(p.roomSoftCap)) this.settings.roomSoftCap = Math.max(1, Math.floor(p.roomSoftCap));
-    if (p.busyServer !== undefined) this.settings.busyServer = !!p.busyServer;
-    this.config.roomSoftCap = this.softCap();
-    if (this.config.roomSoftCap !== before) this.bots.reseat();
     if (p.bots !== undefined && Number.isFinite(p.bots)) {
       this.bots.setCount(p.bots);
       this.settings.bots = this.bots.count;

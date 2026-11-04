@@ -22,19 +22,21 @@ describe('multiplier table', () => {
     expect(STAGE_REMOVALS).toEqual([91, 90, 99]);
   });
 
-  it.runIf(existsSync(SPEC))('is identical to spec/multipliers.json', () => {
+  it.runIf(existsSync(SPEC))('is identical to spec/multipliers.json (from Platforman math 031126 ZI.xlsx)', () => {
     const spec = JSON.parse(readFileSync(SPEC, 'utf8'));
     expect(MULTIPLIERS).toEqual(spec.stages.map((s: { multipliers: number[] }) => s.multipliers));
   });
 
-  it('getMultiplier(stage, k) maps k removals to table[k-1]', () => {
+  it('getMultiplier(stage, k) maps k removals to table[k-1] (CHANGES_6 table)', () => {
     expect(getMultiplier(1, 0)).toBe(1);
-    expect(getMultiplier(1, 1)).toBe(1.01);
-    expect(getMultiplier(1, 91)).toBe(10.77);
-    expect(getMultiplier(2, 0)).toBe(10.77);
-    expect(getMultiplier(2, 90)).toBe(104.46);
-    expect(getMultiplier(3, 0)).toBe(104.46);
-    expect(getMultiplier(3, 99)).toBe(10000);
+    expect(getMultiplier(1, 1)).toBe(0.98);
+    expect(getMultiplier(1, 91)).toBe(10.78);
+    expect(getMultiplier(2, 0)).toBe(10.78);
+    expect(getMultiplier(2, 1)).toBe(10.89);
+    expect(getMultiplier(2, 90)).toBe(107);
+    expect(getMultiplier(3, 0)).toBe(107);
+    expect(getMultiplier(3, 1)).toBe(109);
+    expect(getMultiplier(3, 99)).toBe(10_778);
     expect(() => getMultiplier(1, 92)).toThrow();
   });
 
@@ -46,31 +48,32 @@ describe('multiplier table', () => {
   });
 });
 
-describe('reference RTP (§4)', () => {
+describe('reference RTP (CHANGES_6 §1: flat 3% house edge)', () => {
   const range = (stage: Stage) => {
     const rtps = MULTIPLIERS[stage - 1].map((_, i) => theoreticalRtp(stage, i + 1));
-    return { min: Math.min(...rtps), max: Math.max(...rtps), argmax: rtps.indexOf(Math.max(...rtps)) + 1 };
+    return { min: Math.min(...rtps) * 100, max: Math.max(...rtps) * 100 };
   };
-
-  it('stage 1: 95.04% .. 99.99%, best after tile 1', () => {
-    const r = range(1);
-    expect(r.min * 100).toBeCloseTo(95.04, 2);
-    expect(r.max * 100).toBeCloseTo(99.99, 2);
-    expect(r.argmax).toBe(1);
+  it('stage 1 (10x): 96.57% .. 97.37%', () => {
+    expect(range(1).min).toBeCloseTo(96.57, 2);
+    expect(range(1).max).toBeCloseTo(97.37, 2);
   });
-  it('stage 2: 92.10% .. 96.85%', () => {
-    const r = range(2);
-    expect(r.min * 100).toBeCloseTo(92.1, 1);
-    expect(r.max * 100).toBeCloseTo(96.85, 2);
+  it('stage 2 (100x): 96.30% .. 97.04%', () => {
+    expect(range(2).min).toBeCloseTo(96.3, 2);
+    expect(range(2).max).toBeCloseTo(97.04, 1);
   });
-  it('stage 3: 89.35% .. 93.56%', () => {
-    const r = range(3);
-    expect(r.min * 100).toBeCloseTo(89.35, 2);
-    expect(Math.abs(r.max * 100 - 93.56)).toBeLessThan(0.01); // 93.555 in exact terms
+  it('stage 3 (10kx): 96.62% .. 97.29%', () => {
+    expect(range(3).min).toBeCloseTo(96.62, 1);
+    expect(range(3).max).toBeCloseTo(97.29, 2);
   });
-  it('full 10,000x path = 0.09 x 0.10 x 0.01 x 10,000 = 90%', () => {
+  it('every cash-out point is within 96.3% .. 97.4% (house edge about 3%)', () => {
+    for (const s of [1, 2, 3] as Stage[]) {
+      expect(range(s).min).toBeGreaterThan(96.29);
+      expect(range(s).max).toBeLessThan(97.38);
+    }
+  });
+  it('full path = 0.09 x 0.10 x 0.01 x 10,778 = 97.00%', () => {
     expect(reachProbability(3)).toBeCloseTo(0.009, 12);
-    expect(theoreticalRtp(3, 99)).toBeCloseTo(0.9, 10);
+    expect(theoreticalRtp(3, 99)).toBeCloseTo(0.97002, 10);
   });
 });
 
