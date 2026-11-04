@@ -3,7 +3,7 @@
  *
  *   npm run sim -- [--rounds 1000000] [--workers N] [--seed hex] [--verbose] [--csv path]
  *
- * Strategies (one player each per round, bet = 0.50):
+ * Strategies (one player each per round, bet = 1.00, per-bet cap lifted so the table itself is measured):
  *   - cash out after the k-th removal of stage s, for every (s, k)   (280 strategies)
  *   - random walk: random target among those 280 points, hops to a random tile with p=0.5 each tick
  *   - ride: never cash out (only the 10,000x survivor pays)
@@ -28,8 +28,8 @@ import {
   type Stage,
 } from '@p3/shared';
 
-// €0.50: even 10,778x stays under the €10,000 max win per bet, so the sim measures the uncapped table.
-const BET = 50;
+// EUR 1.00: two-decimal multipliers pay exactly in cents (a smaller bet would round 0.99x down to 0.98x).
+const BET = 100;
 const POINTS: { stage: Stage; k: number }[] = [];
 for (let s = 1; s <= 3; s++) for (let k = 1; k <= STAGE_REMOVALS[s - 1]; k++) POINTS.push({ stage: s as Stage, k });
 const N_STRAT = POINTS.length + 2; // + random walk + ride
@@ -46,7 +46,8 @@ function simulate(seed: string, from: number, to: number, rng: () => number): Ac
   const sum = new Float64Array(N_STRAT);
   const sumSq = new Float64Array(N_STRAT);
   // Same limits as a room: no fixed per-tile maximum (CHANGES_4 §3); the sim never moves onto locked tiles anyway.
-  const limits = { ...DEFAULT_CONFIG, tileCapacity: hardTileCap(DEFAULT_CONFIG.tileCapacity) };
+  // The EUR 10,000 max win would cap 10,778x on a EUR 1 bet; the sim measures the uncapped table (spec section 4).
+  const limits = { ...DEFAULT_CONFIG, tileCapacity: hardTileCap(DEFAULT_CONFIG.tileCapacity), maxWinPerBet: Number.MAX_SAFE_INTEGER };
   // Players to cash out after each (stage, k): index = stageOffset + k.
   const offset = [0, STAGE_REMOVALS[0], STAGE_REMOVALS[0] + STAGE_REMOVALS[1]];
   const ids = Array.from({ length: N_STRAT }, (_, i) => `s${i}`);
