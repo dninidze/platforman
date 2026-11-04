@@ -84,6 +84,7 @@ code {
 .brand {
   font-weight: 800;
   font-size: 1.15rem;
+  text-align: center;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1357,10 +1358,15 @@ code {
   border: none;
   height: 100%;
   font-size: 1.15rem;
+  text-align: center;
 }
 .betbox .amount-row {
   grid-template-columns: minmax(0, 1fr) repeat(4, 28px);
 }
 .amount-group {
   grid-template-columns: 28px minmax(0, 1fr) 28px;
+}
+.betbox {
+  grid-template-columns: minmax(0, 1fr);
+  justify-content: stretch;
 }

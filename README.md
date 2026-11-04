@@ -5,8 +5,17 @@
 
 A multiplayer crash game. 100 tiles (10×10). Players bet on a tile, tiles go **Gone** one by one every
 0.5 s in a precommitted, provably fair order, and the multiplier climbs after every removal. There are
-three stages (labelled by `STAGE_LABEL`: "Vol. 1/2/3"): the board is resurrected after 91 and then 90 removals, and anyone still standing
-on the last tile of stage 3 is paid 10,000x. Play money only.
+three stages (named by `STAGE_NAMES`: **10x / 100x / 10kx**): the board is resurrected after 91 and then 90 removals,
+and anyone still standing on the last tile of the 10kx stage is paid **10,778x** (flat 3% house edge, capped at
+€10,000 per bet). Play money only.
+
+> **Current behaviour: `../spec/CHANGES_6.md`.** It supersedes the older notes further down where they differ:
+> multipliers from `Platforman math 031126 ZI.xlsx` (0.98x … 10,778x, RTP 96.30–97.37% per cash-out point,
+> 97.00% riding to the end; cash-out below 1.00x allowed); one room for every player (no Rooms panel, no busy
+> server setting), 0–1,000 simulated players; tile lock at `max(1, round(3% × bets))`; an emptied board plays on
+> to the last tile, which gets a gold frame; two-line message box; buttons "Bet / Cancel bet / Cash bet 1.00 EUR";
+> "Me" label; Aviator-style live bets (Player | Bet | Tile | x | Win); Recent / 24h / Week / Month / Year results
+> (Top results kept in this browser's `localStorage`); Montserrat embedded.
 
 Built from `../spec/BUILD_SPEC.md` (including **§0: one self-contained HTML file**, **§0.1: identity from the
 aggregator, no name prompt** and **§0.2: title and stage labels**) and
@@ -24,10 +33,9 @@ works with networking disabled (checked with `npm run check:offline`, below).
    balance are kept in `localStorage` when the browser allows it. **Settings** has "Reset balance" and
    "New demo identity".
 2. During betting, tap a tile, set an amount and press **Bet**. Tap another tile to move.
-3. While tiles go, press **Cash out** before your tile goes Gone, or ride all three stages.
-4. **Settings**: number of simulated players (0–9,900, default 300), "simulate busy server" (shards bots
-   into extra rooms past `roomSoftCap`), performance overlay with the stress test, reset balance, download
-   the round log (JSONL).
+3. While tiles go, press **Cash bet** before your tile goes Gone, or ride all three stages.
+4. **Settings**: number of simulated players (0–1,000, default 300), performance overlay with the stress
+   test, reset balance, download the round log (JSONL).
 5. **Fair**: verify any finished round offline with Web Crypto.
 
 URL options: `?perf` opens the performance overlay; `?engine=main` runs the engine on the main thread
@@ -53,7 +61,7 @@ npm run build
 | `npm run typecheck` | `tsc` (strict) over every package |
 | `npm run sim` | Monte Carlo RTP check in Node, 1M rounds by default (`-- --rounds N --seed hex --verbose --csv file`) |
 | `npm run check:offline` | Opens `dist/platforman.html` from disk in headless Chrome/Edge with networking disabled and checks the §0.1/§0.2 points (no prompt, stable demo name, new identity, masked lists, aggregator token + USD, title, stage labels), plays a full round through the UI, runs the verifier, and reports any network request |
-| `npm run check:stress` | Same harness: 9,900 bots for N rounds via the in-page stress recorder (`-- 5 --headed`) |
+| `npm run check:stress` | Same harness: 1,000 bots for N rounds via the in-page stress recorder (`-- 5 --headed`) |
 | `npm run verify -- file.jsonl` | Re-verifies every round in a downloaded round log (seed hash, 3 sequences, tick log, payouts) |
 
 ## Layout

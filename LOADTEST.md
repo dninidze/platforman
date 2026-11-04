@@ -1,5 +1,9 @@
 # Stress test: 9,900 simulated players in the page
 
+> **CHANGES_6:** the product now has one room and at most 1,000 simulated players, and the overlay's stress test
+> runs with 1,000 bots. The measurements below were taken with 9,900 bots on an earlier build and have not been
+> re-run; 1,000 bots is about a tenth of that load.
+
 Spec §0 replaces the WebSocket load test with an in-page stress mode. The acceptance target (amended
 criterion 1) is: engine and UI stay in sync under 9,900 bots at ≥ 50 FPS on a typical laptop, and every tick
 lands within ±50 ms.

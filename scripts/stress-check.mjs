@@ -1,5 +1,5 @@
 // In-page stress mode, automated: opens dist/platforman.html from disk (networking blocked), enters the room,
-// presses the overlay's "Stress test (9,900 bots)" button for N rounds and prints the recorder's result.
+// presses the overlay's "Stress test (1,000 bots)" button for N rounds and prints the recorder's result.
 //
 //   node scripts/stress-check.mjs [rounds=5] [--headed] [--cpu=4] [--browser=path]
 //   --cpu=N throttles the page main thread N times (DevTools CPU throttling) as a slower-laptop proxy.
@@ -26,7 +26,7 @@ await b.waitFor(`!!document.querySelector('.perf .num')`, 10_000, 'overlay');
 await b.evaluate(setInput('.perf .num', String(rounds)));
 await sleep(100);
 await b.evaluate(`[...document.querySelectorAll('.perf button')].find((x) => x.textContent.startsWith('Stress test')).click(), true`);
-log(`stress test started (${headed ? 'headed' : 'headless'}, cpu x${cpu}): 9,900 bots, ${rounds} rounds`);
+log(`stress test started (${headed ? 'headed' : 'headless'}, cpu x${cpu}): 1,000 bots, ${rounds} rounds`);
 
 for (;;) {
   const r = await b.evaluate('window.__p3stress ? JSON.stringify(window.__p3stress) : null');
