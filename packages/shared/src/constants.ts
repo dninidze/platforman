@@ -20,6 +20,8 @@ export interface GameConfig {
   /** Resurrection pause while an emptied board plays on to the last tile (CHANGES_6 §5). */
   fastIntermissionMs: number;
   resultsMs: number;
+  /** Last part of resultsMs shown as the loading screen (client only). */
+  loadingMs: number;
   /** Move lock before each removal (BUILD_SPEC §3.4). 0 = disabled (CHANGES_3 §1). */
   moveLockMs: number;
   /** Fixed maximum players per tile; 0 = no fixed maximum (CHANGES_4 §3 removed the old 99). */
@@ -55,7 +57,9 @@ export const DEFAULT_CONFIG: GameConfig = {
   bettingMs: 10_000,
   intermissionMs: 3_000,
   fastIntermissionMs: 300,
-  resultsMs: 4_000,
+  /** CHANGES_7 §5: 2 s result, then the 5 s loading screen (loadingMs), then betting. */
+  resultsMs: 7_000,
+  loadingMs: 5_000,
   moveLockMs: 0,
   tileCapacity: 0,
   tileCapPct: 3,

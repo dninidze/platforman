@@ -47,8 +47,8 @@ describe('RoomManager', () => {
     mgr.join('b', 'b'); // opens EUR-2
     expect(mgr.list().map((r) => r.roomId)).toEqual(['EUR-1', 'EUR-2']);
     mgr.leave('b');
-    // An empty round: 1 s betting + 91 fast ticks at 200 ms + 4 s results.
-    const roundMs = 1_000 + 91 * 200 + 4_000;
+    // An empty round: 1 s betting + 91 fast ticks + results.
+    const roundMs = 1_000 + 91 * DEFAULT_CONFIG.fastTickMs + DEFAULT_CONFIG.resultsMs;
     clock.advance(roundMs * 2);
     expect(mgr.rooms.has('EUR-2')).toBe(true);
     clock.advance(roundMs * 2);

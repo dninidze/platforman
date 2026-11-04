@@ -63,10 +63,10 @@ describe('round timeline (fake clock)', () => {
     const h = setupRoom();
     h.join('a');
     await h.room.bet('a', 100, h.seqs()[0][0]);
-    h.clock.advanceTo(BET_END + 500); // lost on first tile -> fast finish
-    h.clock.advanceTo(BET_END + 500 + 90 * 200);
+    h.clock.advanceTo(BET_END + 500); // lost on first tile -> fast finish of stage 1
+    h.clock.advanceTo(BET_END + 500 + 90 * DEFAULT_CONFIG.fastTickMs);
     expect(h.room.phase).toBe('ended');
-    h.clock.advance(4000);
+    h.clock.advance(DEFAULT_CONFIG.resultsMs);
     expect(h.room.phase).toBe('betting');
     expect(h.room.roundNo).toBe(2);
     expect([...h.room.core.counts].every((c) => c === 0)).toBe(true);
@@ -250,76 +250,59 @@ describe('limits & capacity', () => {
   });
 });
 
-describe('empty board plays on to the last tile (CHANGES_6 §5)', () => {
+describe('empty board finishes its stage only (CHANGES_7 §1)', () => {
   const FAST = DEFAULT_CONFIG.fastTickMs;
-  const PAUSE = DEFAULT_CONFIG.fastIntermissionMs;
 
-  it('when everyone has cashed out, every remaining removal of all stages plays fast in the precommitted order', async () => {
+  it('when everyone has cashed out, the rest of the stage goes fast in the precommitted order, then ENDED', async () => {
     const h = setupRoom();
-    const order = [...h.seqs()[0], ...h.seqs()[1], ...h.seqs()[2]]; // round 1, captured before the clock moves on
-    const lastTile = [...Array(100).keys()].find((t) => !h.seqs()[2].includes(t));
     h.join('a');
     await h.room.bet('a', 100, h.safeTile(1));
     h.clock.advanceTo(BET_END + 3 * 500 + 50);
     h.room.cashout('a');
-    h.clock.advance(20_000); // ends this round, still before the next round's first tick
+    h.clock.advanceTo(BET_END + 3 * 500 + 50 + 88 * FAST);
     const ticks = h.of('tick');
-    expect(ticks.map((t) => t.tileGone)).toEqual(order);
-    const fastTimes = ticks.slice(3, 91).map((t) => t.serverTime);
+    expect(ticks.map((t) => t.tileGone)).toEqual(h.seqs()[0]);
+    const fastTimes = ticks.slice(3).map((t) => t.serverTime);
     expect(fastTimes[0]).toBe(BET_END + 3 * 500 + 50 + FAST); // min(next normal tick, now + fastTickMs)
     fastTimes.slice(1).forEach((t, i) => expect(t - fastTimes[i]).toBe(FAST));
     expect(ticks.slice(3).every((t) => t.fast)).toBe(true);
-    // Short resurrections between stages.
-    const ends = h.of('stageEnd');
-    expect(ends.map((e) => e.stage)).toEqual([1, 2]);
-    expect(ends[0].phaseEndsAt! - ends[0].serverTime).toBe(PAUSE);
-    const end = h.of('roundEnd')[0];
-    expect(end).toMatchObject({ emptiedAtStage: 1 });
-    expect(end.played.map((p) => p.length)).toEqual([91, 90, 99]);
-    // The last tile standing is the winning tile.
-    expect(end.jackpotTile).toBe(lastTile);
+    expect(h.room.phase).toBe('ended');
+    expect(h.of('roundEnd')[0]).toMatchObject({ emptiedAtStage: 1 });
+    expect(h.of('stageEnd')).toHaveLength(0);
     expect(h.audit.rounds[0].fastFrom).toEqual({ stage: 1, k: 4 });
   });
 
-  it('when the last player is lost, the rest of the round plays fast', async () => {
+  it('when the last player is lost, the stage fast-finishes', async () => {
     const h = setupRoom();
-    const order = [...h.seqs()[0], ...h.seqs()[1], ...h.seqs()[2]]; // round 1, captured before the clock moves on
-    const lastTile = [...Array(100).keys()].find((t) => !h.seqs()[2].includes(t));
     h.join('a');
     await h.room.bet('a', 100, h.seqs()[0][4]);
     h.clock.advanceTo(BET_END + 5 * 500);
     expect(h.room.fast).toBe(true);
-    h.clock.advance(20_000); // ends this round, still before the next round's first tick
-    expect(h.of('roundEnd')[0]).toMatchObject({ emptiedAtStage: 1 });
-    expect(h.of('tick').map((t) => t.tileGone)).toEqual(order);
+    h.clock.advanceTo(BET_END + 5 * 500 + 86 * FAST);
+    expect(h.room.phase).toBe('ended');
+    expect(h.of('tick').map((t) => t.tileGone)).toEqual(h.seqs()[0]);
   });
 
-  it('with no bets at all, fast mode applies from the first tick and runs to the last tile', () => {
+  it('with no bets at all, fast mode applies from the first tick and stage 1 only is played', () => {
     const h = setupRoom();
-    const order = [...h.seqs()[0], ...h.seqs()[1], ...h.seqs()[2]]; // round 1, captured before the clock moves on
-    const lastTile = [...Array(100).keys()].find((t) => !h.seqs()[2].includes(t));
-    h.clock.advanceTo(BET_END + 280 * FAST + 2 * PAUSE);
+    h.clock.advanceTo(BET_END + 91 * FAST);
     const ticks = h.of('tick');
-    expect(ticks).toHaveLength(280);
+    expect(ticks).toHaveLength(91);
     expect(ticks[0].serverTime).toBe(BET_END + FAST);
     expect(ticks.every((t) => t.fast)).toBe(true);
-    expect(ticks.map((t) => t.tileGone)).toEqual(order);
+    expect(ticks.map((t) => t.tileGone)).toEqual(h.seqs()[0]);
     expect(h.room.phase).toBe('ended');
   });
 
-  it('when everyone cashes out during intermission, the resurrection is cut short and the later stages play fast', async () => {
+  it('when everyone cashes out during intermission the round ends; later stages are not played', async () => {
     const h = setupRoom();
-    const order = [...h.seqs()[0], ...h.seqs()[1], ...h.seqs()[2]]; // round 1, captured before the clock moves on
-    const lastTile = [...Array(100).keys()].find((t) => !h.seqs()[2].includes(t));
     h.join('a');
     await h.room.bet('a', 100, h.safeTile(1));
     h.clock.advanceTo(BET_END + 91 * 500 + 500);
     h.room.cashout('a');
-    expect(h.room.phase).toBe('intermission');
-    expect(h.room.phaseEndsAt).toBe(BET_END + 91 * 500 + 500 + PAUSE);
-    h.clock.advance(20_000); // ends this round, still before the next round's first tick
-    expect(h.of('tick').filter((t) => t.stage === 2)).toHaveLength(90);
-    expect(h.of('tick').filter((t) => t.stage === 3)).toHaveLength(99);
+    expect(h.room.phase).toBe('ended');
+    h.clock.advance(3500);
+    expect(h.of('tick').filter((t) => t.stage === 2)).toHaveLength(0);
     expect(h.of('roundEnd')[0]).toMatchObject({ emptiedAtStage: 1 });
   });
 });
@@ -343,7 +326,7 @@ describe('fairness & audit', () => {
     }
     const rec = h.audit.rounds[0];
     expect(verifyRound(rec).ok).toBe(true);
-    expect(rec.ticks.length).toBe(91 + 90 + 99); // the emptied board plays on to the last tile
+    expect(rec.ticks.length).toBe(91 + 90); // the emptied board finishes stage 2 only
     expect(rec.played[1]).toHaveLength(90);
     expect(rec.emptiedAtStage).toBe(2);
     const a = rec.players.find((p) => p.playerId === 'a')!;
@@ -412,7 +395,7 @@ describe('tile capacity (CHANGES_4 §3)', () => {
 });
 
 describe('public players list', () => {
-  it('lists at most 50 bets with masked names, cash-outs first, and counts the rest', async () => {
+  it('lists at most 50 bets with masked names, live bets first by size, and counts the rest', async () => {
     const h = setupRoom();
     const ids = Array.from({ length: 80 }, (_, i) => `player${i}`);
     h.join(...ids);
@@ -422,10 +405,33 @@ describe('public players list', () => {
     const feed = h.room.liveFeed();
     expect(feed.bets).toHaveLength(50);
     expect(feed.moreBets).toBe(30);
-    expect(feed.bets[0]).toMatchObject({ nickname: 'pl***3', state: 'cashedOut', bet: 13, multiplier: 0.98 });
-    expect(feed.bets[1]).toMatchObject({ state: 'alive', bet: 89 });
+    expect(feed.bets[0]).toMatchObject({ state: 'alive', bet: 89, survived: null });
+    expect(feed.bets.every((b) => b.state === 'alive')).toBe(true);
+    expect(feed.bets.map((b) => b.bet)).toEqual([...feed.bets.map((b) => b.bet)].sort((x, y) => y - x));
     expect(feed.stats).toMatchObject({ inRoom: 80, staked: ids.reduce((a, _, i) => a + 10 + i, 0), paid: 12, biggestWin: 12, biggestMultiplier: 0.98 });
     for (const b of feed.bets) expect(b.nickname).toMatch(/^pl\*\*\*\d$/);
+  });
+});
+
+describe('live bets order and tiles survived (CHANGES_7 §2)', () => {
+  it('live by bet, then cashed out by win, then crashed by bet; tiles survived over the whole round', async () => {
+    const h = setupRoom();
+    h.join('live', 'cash', 'lost', 'small');
+    const doomed = h.seqs()[0][1];
+    await h.room.bet('live', 50, h.safeTile(1, 0));
+    await h.room.bet('small', 20, h.safeTile(1, 1));
+    await h.room.bet('cash', 30, h.safeTile(1, 2));
+    await h.room.bet('lost', 90, doomed);
+    expect(h.room.liveFeed().bets.map((b) => b.bet)).toEqual([90, 50, 30, 20]); // while betting: by bet
+    h.clock.advanceTo(BET_END + 3 * 500 + 10); // 3 tiles gone; "lost" went on tile 2
+    h.room.cashout('cash');
+    const bets = h.room.liveFeed().bets;
+    expect(bets.map((b) => [b.state, b.bet, b.survived])).toEqual([
+      ['alive', 50, null],
+      ['alive', 20, null],
+      ['cashedOut', 30, 3],
+      ['lost', 90, 1],
+    ]);
   });
 });
 
@@ -486,5 +492,27 @@ describe('colour rule (CHANGES_6 §4) and round highlights', () => {
     const winner = [...players, { outcome: 'survived', resolvedStage: 3, resolvedK: 99, multiplier100: 1_077_800, payout: 107_780 }] as never[];
     expect(roundHighlights(winner).topMan).toEqual({ multiplier: 10_778, survived: 280 });
     expect(roundHighlights([])).toEqual({ topMan: null, topCashout: null });
+  });
+
+  it('CHANGES_7 §3: a cash-out that lasted longest is also Top man, with the same multiplier; Top man >= Top cashout', () => {
+    const players = [
+      { outcome: 'lost', resolvedStage: 1, resolvedK: 30, multiplier100: null, payout: 0 },
+      { outcome: 'cashout', resolvedStage: 2, resolvedK: 5, multiplier100: MULTIPLIERS_100[1][4], payout: 1_400 },
+      { outcome: 'cashout', resolvedStage: 1, resolvedK: 10, multiplier100: 120, payout: 600 },
+    ] as never[];
+    expect(roundHighlights(players)).toEqual({ topMan: { multiplier: MULTIPLIERS_100[1][4] / 100, survived: 96 }, topCashout: { multiplier: MULTIPLIERS_100[1][4] / 100, amount: 1_400 } });
+    // Random rounds: the rule always holds.
+    for (let i = 0; i < 200; i++) {
+      const ps = Array.from({ length: 6 }, (_, j) => {
+        const stage = 1 + ((i + j) % 3);
+        const k = 1 + ((i * 7 + j * 13) % [91, 90, 99][stage - 1]);
+        const cash = (i + j) % 2 === 0;
+        return cash
+          ? { outcome: 'cashout', resolvedStage: stage, resolvedK: k, multiplier100: MULTIPLIERS_100[stage - 1][k - 1], payout: 1 }
+          : { outcome: 'lost', resolvedStage: stage, resolvedK: k, multiplier100: null, payout: 0 };
+      }) as never[];
+      const hl = roundHighlights(ps);
+      if (hl.topCashout) expect(hl.topMan!.multiplier).toBeGreaterThanOrEqual(hl.topCashout.multiplier);
+    }
   });
 });

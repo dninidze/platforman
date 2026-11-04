@@ -232,6 +232,8 @@ export interface PublicBet {
   state: PlayerState;
   multiplier: number | null;
   payout: number;
+  /** CHANGES_7 §2: tiles survived in the whole round (1–280) when cashed out or crashed; null while live. */
+  survived: number | null;
 }
 
 export interface RoomsMsg {

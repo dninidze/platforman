@@ -28,6 +28,7 @@ import {
   type Stage,
   type TimerHandle,
   type YouMsg,
+  tilesSurvived,
 } from '@p3/shared';
 import type { AuditLog, PlayerAudit, RoundRecord } from './audit';
 import type { Wallet } from './wallet';
@@ -269,16 +270,12 @@ export class Room {
     for (const p of this.core.players.values()) this.sendYou(p.id);
   }
 
-  /** The board emptied: play the rest of the round fast (CHANGES_6 §5) and remember where it emptied. */
+  /** The board emptied: play the rest of the stage fast (CHANGES_7 §1) and remember where it emptied. */
   private enterFast(stage: Stage, k: number): void {
     if (this.fast) return;
     this.fast = true;
     this.fastFrom = { stage, k };
     if (this.core.emptiedAtStage === null) this.core.emptiedAtStage = stage;
-  }
-
-  private intermissionLength(): number {
-    return this.fast ? this.config.fastIntermissionMs : this.config.intermissionMs;
   }
 
   private doTick(at: number): void {
@@ -309,13 +306,12 @@ export class Room {
     if (r.losers.length || r.forced.length) this.feedDirty = true;
 
     if (r.stageComplete) {
-      // CHANGES_6 §5: an emptied board keeps going through the later stages until the last tile stands.
-      if (r.stage === 3) {
+      // CHANGES_7 §1: an emptied board finishes only its current stage, then the round ends.
+      if (r.stage === 3 || this.fast || core.onBoard === 0) {
         if (core.phase !== 'ended') core.end();
         this.endRound(at);
       } else {
-        if (core.onBoard === 0) this.enterFast(r.stage, r.k);
-        this.phaseEndsAt = at + this.intermissionLength();
+        this.phaseEndsAt = at + this.config.intermissionMs;
         this.nextTickAt = null;
         this.broadcast({
           t: 'stageEnd',
@@ -498,7 +494,7 @@ export class Room {
     return { ok: true, amount: p.payout, multiplier: p.multiplier100! / 100, maxWin: p.outcome === 'maxWin' };
   }
 
-  /** After a cashout empties the board: play on fast to the last tile (CHANGES_6 §5). */
+  /** After a cashout empties the board: fast-finish the stage, or end at once in intermission (CHANGES_7 §1). */
   private afterBoardChange(now: number): void {
     const core = this.core;
     if (core.onBoard > 0 || this.fast) return;
@@ -507,8 +503,8 @@ export class Room {
       if (this.nextTickAt !== null) this.nextTickAt = Math.min(this.nextTickAt, now + this.config.fastTickMs);
       this.schedule();
     } else if (core.phase === 'intermission') {
-      this.enterFast(core.stage, STAGE_REMOVALS[core.stage - 1]);
-      if (this.phaseEndsAt !== null) this.phaseEndsAt = Math.min(this.phaseEndsAt, now + this.config.fastIntermissionMs);
+      core.end();
+      this.endRound(now);
       this.schedule();
     }
   }
@@ -647,8 +643,8 @@ export class Room {
     // Public list: at most LIST_LIMIT rows, masked names (BUILD_SPEC §8: never list every bet).
     const listed: RoundPlayer[] = [];
     for (const [group, key] of [
-      [cashed, (p: RoundPlayer) => p.payout],
       [live, (p: RoundPlayer) => p.bet],
+      [cashed, (p: RoundPlayer) => p.payout],
       [gone, (p: RoundPlayer) => p.bet],
     ] as const) {
       if (listed.length >= LIST_LIMIT) break;
@@ -668,6 +664,7 @@ export class Room {
         state: p.state,
         multiplier: p.multiplier100 === null ? null : p.multiplier100 / 100,
         payout: p.payout,
+        survived: tilesSurvived(p),
       })),
       moreBets: this.core.players.size - listed.length,
     };

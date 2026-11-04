@@ -290,7 +290,18 @@ function validTile(tile: number): boolean {
 const removalsBefore = (stage: Stage) => STAGE_REMOVALS.slice(0, stage - 1).reduce((a, b) => a + b, 0);
 
 /**
- * CHANGES_5 §5. Top man: the player who lasted longest without cashing out. A player lost at removal k of
+ * CHANGES_7 §2: tiles survived in the whole round by a resolved player (cashed out after k removals: k;
+ * lost at removal k: k - 1; survivor: 280), or null while the player is still live.
+ */
+export function tilesSurvived(p: RoundPlayer): number | null {
+  if (p.outcome === 'survived') return removalsBefore(3) + STAGE_REMOVALS[2];
+  if (p.resolvedStage === null || p.resolvedK === null) return null;
+  return removalsBefore(p.resolvedStage) + p.resolvedK - (p.outcome === 'lost' ? 1 : 0);
+}
+
+/**
+ * CHANGES_7 §3: Top man is the player who lasted longest, cash-outs included (ties to the higher multiplier),
+ * so Top man >= Top cashout. (Was CHANGES_5 §5: the player who lasted longest without cashing out.) A player lost at removal k of
  * stage s survived removalsBefore(s) + k - 1 tiles and last stood at the multiplier after removal k - 1.
  * Survivors paid at the end of stage 3 survived all 280. Top cashout: highest multiplier cashed out, ties
  * to the larger amount.
@@ -299,14 +310,13 @@ export function roundHighlights(players: Iterable<RoundPlayer>): RoundHighlights
   let topMan: RoundHighlights['topMan'] = null;
   let topCashout: RoundHighlights['topCashout'] = null;
   for (const p of players) {
-    if (p.outcome === 'lost' && p.resolvedStage !== null && p.resolvedK !== null) {
-      const survived = removalsBefore(p.resolvedStage) + p.resolvedK - 1;
-      const multiplier = getMultiplier100(p.resolvedStage, p.resolvedK - 1) / 100;
-      if (!topMan || survived > topMan.survived) topMan = { multiplier, survived };
-    } else if (p.outcome === 'survived') {
-      const survived = removalsBefore(3) + STAGE_REMOVALS[2];
-      topMan = { multiplier: p.multiplier100! / 100, survived };
-    } else if ((p.outcome === 'cashout' || p.outcome === 'maxWin') && p.multiplier100 !== null) {
+    const survived = tilesSurvived(p);
+    if (survived !== null) {
+      const multiplier =
+        p.outcome === 'lost' ? getMultiplier100(p.resolvedStage!, p.resolvedK! - 1) / 100 : (p.multiplier100 ?? 0) / 100;
+      if (!topMan || survived! > topMan.survived || (survived === topMan.survived && multiplier > topMan.multiplier)) topMan = { multiplier, survived: survived! };
+    }
+    if ((p.outcome === 'cashout' || p.outcome === 'maxWin') && p.multiplier100 !== null) {
       const m = p.multiplier100 / 100;
       if (!topCashout || m > topCashout.multiplier || (m === topCashout.multiplier && p.payout > topCashout.amount)) {
         topCashout = { multiplier: m, amount: p.payout };
