@@ -1611,3 +1611,155 @@ code {
   min-width: 0;
   flex: none;
 }
+
+/* ======================================================================================
+   CHANGES_8
+   ====================================================================================== */
+/* §2 BET NOW watermark over the board while betting; tiles stay visible and clickable */
+.betnow {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 0.9;
+  font-weight: 900;
+  font-size: clamp(3.5rem, 17vw, 8.5rem);
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.28);
+  -webkit-text-stroke: 2px rgba(0, 0, 0, 0.35);
+  text-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+  animation: betnow-pulse 1.6s ease-in-out infinite;
+}
+@keyframes betnow-pulse {
+  50% {
+    color: rgba(255, 255, 255, 0.4);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .betnow {
+    animation: none;
+  }
+}
+/* §3 message box: a little lower, away from the stage tabs */
+.mbox {
+  grid-template-rows: minmax(0, 1fr) auto;
+  row-gap: 6px;
+  padding: 5px 10px 7px;
+}
+.mbox .stages {
+  align-self: start;
+}
+.msgbox {
+  align-self: end;
+}
+/* §6 one colour, ticker for long text */
+.msg-line,
+.msg-line + .msg-line {
+  color: var(--text);
+  font-weight: 500;
+  text-overflow: clip;
+}
+.msg-line span {
+  display: inline-block;
+}
+.msg-line.marquee {
+  text-align: left;
+}
+.msg-line.marquee span {
+  padding-left: 100%;
+  animation: marquee linear infinite;
+}
+@keyframes marquee {
+  to {
+    transform: translateX(-100%);
+  }
+}
+/* §4 wider − / + */
+.amount-group {
+  grid-template-columns: minmax(34px, 1fr) minmax(56px, 1.3fr) minmax(34px, 1fr);
+}
+.betbox .amount-row {
+  grid-template-columns: minmax(0, 1fr) repeat(4, 26px);
+  gap: 4px;
+}
+/* §8 fade while next-round betting is not open yet */
+.mainbtn.fading {
+  opacity: 0.35;
+  transition: opacity 0.3s;
+}
+/* §5 live bets: colour by state, no bold; stage badge */
+.lb-head {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+}
+.lb-stage {
+  justify-self: end;
+  font-size: 0.95rem;
+  padding: 4px 12px;
+}
+.lbtable td,
+.lbtable td.win,
+.lbtable td.loss,
+.lbtable tr.me td {
+  font-weight: 400;
+}
+.lbtable tr.st-alive td,
+.lbtable tr.st-betting td {
+  color: var(--t-yellow);
+}
+.lbtable tr.st-cashedOut td {
+  color: #3ddc6a;
+}
+.lbtable tr.st-lost td {
+  color: var(--loss);
+}
+.lbtable tr.st-cashedOut td,
+.lbtable tr.me td {
+  background: transparent;
+}
+.lbtable tr.me td:first-child {
+  box-shadow: inset 3px 0 0 var(--t-yellow);
+}
+/* §9 rounds panel */
+.rounds .gold-x {
+  color: var(--t-yellow);
+}
+.sortrow {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+.sortbtn,
+.sortbtn.on {
+  width: 48px;
+  margin: 0;
+  padding: 2px 0;
+  font-size: 0.62rem;
+  font-weight: 600;
+  border-radius: 4px;
+  border: 1px solid #2f6fd6;
+  color: #8fb6ff;
+  background: rgba(47, 111, 214, 0.12);
+}
+.sortbtn.on {
+  background: #2f6fd6;
+  color: #fff;
+}
+.mbox {
+  padding: 4px 10px 3px;
+  row-gap: 5px;
+}
+.mbox .stages {
+  gap: 2px;
+}
+.msgbox {
+  padding: 1px 8px;
+}
+.betnow {
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+}

@@ -57,9 +57,9 @@ export const DEFAULT_CONFIG: GameConfig = {
   bettingMs: 10_000,
   intermissionMs: 3_000,
   fastIntermissionMs: 300,
-  /** CHANGES_7 §5: 2 s result, then the 5 s loading screen (loadingMs), then betting. */
-  resultsMs: 7_000,
-  loadingMs: 5_000,
+  /** CHANGES_8 §2: 2 s result, then the 3 s loading screen (loadingMs), then betting. */
+  resultsMs: 5_000,
+  loadingMs: 3_000,
   moveLockMs: 0,
   tileCapacity: 0,
   tileCapPct: 3,

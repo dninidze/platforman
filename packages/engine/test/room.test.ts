@@ -270,6 +270,11 @@ describe('empty board finishes its stage only (CHANGES_7 §1)', () => {
     expect(h.of('roundEnd')[0]).toMatchObject({ emptiedAtStage: 1 });
     expect(h.of('stageEnd')).toHaveLength(0);
     expect(h.audit.rounds[0].fastFrom).toEqual({ stage: 1, k: 4 });
+    // CHANGES_8 §1: the 9 tiles still standing, in precommitted order; the last is the stage's surviving tile.
+    const tail = h.of('roundEnd')[0].stageTail;
+    expect(tail).toHaveLength(9);
+    expect(new Set([...h.seqs()[0], ...tail]).size).toBe(100);
+    expect(tail.at(-1)).toBe(h.room['permutations'][0][99]);
   });
 
   it('when the last player is lost, the stage fast-finishes', async () => {
@@ -432,6 +437,8 @@ describe('live bets order and tiles survived (CHANGES_7 §2)', () => {
       ['cashedOut', 30, 3],
       ['lost', 90, 1],
     ]);
+    expect(bets[3].crashMultiplier).toBe(MULTIPLIERS_100[0][0] / 100); // lost on tile 2: last stood at tile 1's multiplier
+    expect(bets[0].crashMultiplier).toBeNull();
   });
 });
 
@@ -514,5 +521,19 @@ describe('colour rule (CHANGES_6 §4) and round highlights', () => {
       const hl = roundHighlights(ps);
       if (hl.topCashout) expect(hl.topMan!.multiplier).toBeGreaterThanOrEqual(hl.topCashout.multiplier);
     }
+  });
+});
+
+describe('CHANGES_8 §5: cashed-out players listed by multiplier', () => {
+  it('a higher multiplier comes first even with a smaller win', async () => {
+    const h = setupRoom();
+    h.join('big', 'late');
+    await h.room.bet('big', 2_000, h.safeTile(1, 0));
+    await h.room.bet('late', 10, h.safeTile(1, 1));
+    h.clock.advanceTo(BET_END + 2 * 500 + 10);
+    h.room.cashout('big');
+    h.clock.advanceTo(BET_END + 6 * 500 + 10);
+    h.room.cashout('late');
+    expect(h.room.liveFeed().bets.map((b) => b.bet)).toEqual([10, 2_000]);
   });
 });

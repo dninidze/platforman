@@ -110,12 +110,14 @@ function useGame(): GameState {
 }
 
 /** Re-render on an interval for countdowns. */
-function useNow(ms = 100) {
+function useNow(ms = 100, active = true) {
   const [now, setNow] = useState(() => client.serverNow());
   useEffect(() => {
+    if (!active) return;
+    setNow(client.serverNow());
     const id = setInterval(() => setNow(client.serverNow()), ms);
     return () => clearInterval(id);
-  }, [ms]);
+  }, [ms, active]);
   return now;
 }
 
@@ -499,7 +501,8 @@ function playerLine(s: GameState, now: number, pick: Pick | null, queued: number
     return { text: `You're on tile #${(you.tileId ?? 0) + 1}`, kind: 'me' };
   }
   if (you?.state === 'cashedOut') return { text: `Cashed out ${formatMultiplier(you.multiplier ?? 0)} · ${formatMoney(you.payout)} ${cur}`, kind: 'win' };
-  if (you?.state === 'lost' && (r.phase !== 'ended' || (s.lostAt !== null && now - (s.lostAt + s.offset) < 5000))) return { text: 'Your tile is gone', kind: 'loss' };
+  // CHANGES_8 §7: "Your tile is gone" for 5 s, then the bet prompt again.
+  if (you?.state === 'lost' && s.lostAt !== null && now - (s.lostAt + s.offset) < 5000) return { text: 'Your tile is gone', kind: 'loss' };
   if (queued !== null) return { text: 'Your bet goes on a random tile next round', kind: 'me' };
   if (r.phase === 'betting' && pick) {
     return pick.random ? { text: `Random tile #${pick.tile + 1} · tap a tile to choose`, kind: 'hint' } : { text: `Tile #${pick.tile + 1} selected`, kind: 'hint' };
@@ -515,7 +518,6 @@ function playerLine(s: GameState, now: number, pick: Pick | null, queued: number
     if (last?.emptiedAtStage) return { text: `Round over at ${stageName(last.emptiedAtStage)}`, kind: 'info' };
     return { text: 'Round over', kind: 'info' };
   }
-  if (r.fast) return { text: 'Everyone is out: finishing the stage', kind: 'info' };
   return { text: 'Bet now for the next round', kind: 'hint' };
 }
 
@@ -546,13 +548,26 @@ function MultiplierSection({ s, pick, queued }: { s: GameState; pick: Pick | nul
         {formatMultiplier(notStarted ? 0 : r.multiplier)}
       </div>
       <div className="msgbox" role="status" aria-live="polite">
-        <div className={`msg-line msg-${top.kind}`} title={top.text}>
-          {top.text}
-        </div>
-        <div className="msg-line msg-count" title={game}>
-          {game}
-        </div>
+        <Marquee text={top.text} />
+        <Marquee text={game} />
       </div>
+    </div>
+  );
+}
+
+/** CHANGES_8 §6: one line; text wider than the box scrolls like a ticker. */
+function Marquee({ text }: { text: string }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [run, setRun] = useState(false);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const span = el.firstElementChild as HTMLElement;
+    setRun(span.scrollWidth > el.clientWidth + 1);
+  }, [text]);
+  return (
+    <div className={`msg-line ${run ? 'marquee' : ''}`} ref={box} title={text}>
+      <span style={run ? { animationDuration: `${Math.max(5, text.length / 6)}s` } : undefined}>{text}</span>
     </div>
   );
 }
@@ -572,6 +587,7 @@ function Board({
 }) {
   const r = s.round;
   const caps = useCaps(s);
+  const now = useNow(50, r?.phase === 'ended');
   const you = s.you && r && s.you.roundId === r.roundId ? s.you : null;
   const myTile = you && (you.state === 'alive' || you.state === 'betting') ? you.tileId : null;
   if (!r || !caps) return <div className="board" />;
@@ -580,15 +596,22 @@ function Board({
   const pickedTile = canPick ? pick?.tile : null;
   // Your bet's frame: bronze while betting and in 10x, then silver, then gold.
   const metal = METAL[(r.phase === 'intermission' ? Math.min(3, r.stage + 1) : r.stage) - 1];
-  // CHANGES_7 §1: at round end the tiles that survived the last stage played get the gold frame.
+  // CHANGES_8 §1: at round end the stage's other standing tiles go fast (precommitted order) and only its
+  // surviving tile stays, with the gold frame.
   const ended = r.phase === 'ended';
-  const fromResurrection = ended && r.gone.every((g) => !g) && !!r.survived;
-  const isWinner = (t: number) => ended && (fromResurrection ? !!r.survived?.[t] : !r.gone[t]);
+  const last = ended && s.revealed[0]?.roundId === r.roundId ? s.revealed[0] : null;
+  const tail = last?.stageTail ?? [];
+  const endedAt = last && r.phaseEndsAt !== null ? r.phaseEndsAt - (s.config?.resultsMs ?? 5_000) : null;
+  const tailGone = endedAt === null ? 0 : Math.min(Math.max(0, tail.length - 1), Math.floor((now - endedAt) / (s.config?.fastTickMs ?? 50)));
+  const standing = new Set(tail.slice(tailGone));
+  const goneAt = (t: number) => (ended && tail.length ? !standing.has(t) : r.gone[t]);
+  const winner = ended && tail.length && standing.size === 1 ? tail[tail.length - 1] : -1;
+  const isWinner = (t: number) => t === winner;
 
   const onTile = (t: number) => {
     // Not in the game (no bet, cashed out or lost): point at the bet section.
     if (!spectating && myTile === null && !canPick) return onNudge();
-    if (r.gone[t]) return;
+    if (goneAt(t)) return;
     if (canMove && t !== myTile) client.move(t);
     else if (canPick) setPick({ tile: t, random: false });
   };
@@ -596,9 +619,15 @@ function Board({
   return (
     <div className="board-wrap">
     <LoadingScreen s={s} />
+    {r.phase === 'betting' && (
+      <div className="betnow" aria-hidden>
+        <span>BET</span>
+        <span>NOW</span>
+      </div>
+    )}
     <div className={`board ${r.fast ? 'fast' : ''} ${r.phase === 'intermission' ? 'resurrect' : ''}`} role="grid" aria-label="10 by 10 tile grid">
       {r.counts.map((count, t) => {
-        const gone = r.gone[t];
+        const gone = goneAt(t);
         const band = tileBand(count, gone, caps);
         const mine = t === myTile;
         const justGone = gone && s.lastGone?.tile === t;
@@ -717,13 +746,20 @@ function BetSection({
   };
   const minus = useHoldRepeat(() => step(-1));
   const plus = useHoldRepeat(() => step(1));
+  // CHANGES_8 §8: no bet when betting closed: the main button fades for 3 s before a next-round bet is allowed.
+  const [closedAt, setClosedAt] = useState<number | null>(null);
+  const startedRound = r?.phase === 'running' && r.stage === 1 ? r.roundId : null;
+  useEffect(() => {
+    if (startedRound) setClosedAt(client.serverNow());
+  }, [startedRound]);
+  const now = useNow(100, closedAt !== null);
   const potential = useMemo(() => {
     if (!you || !r || you.state !== 'alive') return 0;
     return payout(you.bet, Math.round(r.multiplier * 100), cfg.maxWinPerBet);
   }, [you, r, cfg.maxWinPerBet]);
   if (!r) return <div className="betbox" />;
 
-  let main: { text: string; color: 'green' | 'yellow' | 'red'; onClick: () => void; disabled?: boolean };
+  let main: { text: string; color: 'green' | 'yellow' | 'red'; onClick: () => void; disabled?: boolean; fading?: boolean };
   if (r.phase === 'betting' && you?.state === 'betting') {
     main = { text: `Cancel bet ${formatMoney(you.bet)} ${cur}`, color: 'red', onClick: () => client.cancelBet() };
   } else if (r.phase === 'betting') {
@@ -734,12 +770,13 @@ function BetSection({
   } else if (queued !== null) {
     main = { text: `Cancel bet ${formatMoney(queued)} ${cur}`, color: 'red', onClick: () => setQueued(null) };
   } else {
-    main = { text: `Bet ${formatMoney(valid ? minor : 0)} ${cur}`, color: 'green', disabled: !valid, onClick: () => setQueued(minor) };
+    const fading = closedAt !== null && now - closedAt < 3_000 && r.phase === 'running' && (!you || you.state === 'idle');
+    main = { text: `Bet ${formatMoney(valid ? minor : 0)} ${cur}`, color: 'green', disabled: !valid || fading, fading, onClick: () => setQueued(minor) };
   }
 
   return (
     <div className={`betbox ${nudge ? `nudge-${nudge % 2}` : ''}`}>
-      <button className={`mainbtn mb-${main.color}`} disabled={main.disabled} onClick={main.onClick}>
+      <button className={`mainbtn mb-${main.color}${main.fading ? ' fading' : ''}`} disabled={main.disabled} onClick={main.onClick}>
         <span className="cta">{main.text}</span>
       </button>
       <div className="amount-row">
@@ -787,19 +824,28 @@ function LiveBets({ s, sym }: { s: GameState; sym: string }) {
   // CHANGES_7 §2: tiles survived in the whole round; live players show the tiles gone so far.
   const goneNow = r && r.phase !== 'betting' ? tilesGoneInRound(r) : null;
   // My own row may be outside the engine's 50 listed rows: remember the tile count when I cash out or crash.
-  const myTiles = useRef<{ roundId: string; tiles: number } | null>(null);
+  const myTiles = useRef<{ roundId: string; tiles: number; crashX: number | null } | null>(null);
+  const lastX = useRef(0);
+  const liveX = r && !(r.stage === 1 && r.removed === 0) ? r.multiplier : 0;
   if (you && goneNow !== null && (you.state === 'cashedOut' || you.state === 'lost') && myTiles.current?.roundId !== you.roundId) {
-    myTiles.current = { roundId: you.roundId, tiles: you.state === 'lost' ? Math.max(0, goneNow - 1) : goneNow };
+    myTiles.current = { roundId: you.roundId, tiles: you.state === 'lost' ? Math.max(0, goneNow - 1) : goneNow, crashX: you.state === 'lost' ? lastX.current : null };
   }
+  if (you?.state === 'alive') lastX.current = liveX;
+  // CHANGES_8 §5: x for everyone (cashed: cash-out x; live: current x; crashed: x they last stood at).
+  const xCell = (b: { state: string; multiplier: number | null; crashMultiplier?: number | null }) =>
+    b.state === 'cashedOut' ? b.multiplier : b.state === 'alive' ? liveX : b.state === 'lost' ? (b.crashMultiplier ?? null) : null;
   const tilesCell = (b: { state: string; survived?: number | null }) =>
     b.state === 'cashedOut' || b.state === 'lost' ? (b.survived ?? '') : b.state === 'alive' && goneNow !== null ? goneNow : '';
-  const row = (key: string | number, name: string, b: { bet: number; state: string; multiplier: number | null; payout: number; survived?: number | null }, me = false) => (
+  const row = (key: string | number, name: string, b: { bet: number; state: string; multiplier: number | null; payout: number; survived?: number | null; crashMultiplier?: number | null }, me = false) => (
     <tr key={key} className={`st-${b.state}${me ? ' me' : ''}`}>
       <td className="nick">{name}</td>
       <td>{money(b.bet)}</td>
-      <td className={b.state === 'cashedOut' ? 'win' : b.state === 'lost' ? 'loss' : 'muted'}>{tilesCell(b)}</td>
-      <td className="win">{b.state === 'cashedOut' && b.multiplier !== null ? formatMultiplier(b.multiplier) : ''}</td>
-      <td className="win">{b.state === 'cashedOut' ? money(b.payout) : ''}</td>
+      <td>{tilesCell(b)}</td>
+      <td>{(() => {
+        const x = xCell(b);
+        return x === null || b.state === 'betting' ? '' : formatMultiplier(x);
+      })()}</td>
+      <td>{b.state === 'cashedOut' ? money(b.payout) : ''}</td>
     </tr>
   );
   return (
@@ -811,10 +857,18 @@ function LiveBets({ s, sym }: { s: GameState; sym: string }) {
             {(f?.totals.alive ?? 0).toLocaleString()} <span className="muted">/ {(f?.totals.players ?? 0).toLocaleString()}</span>
           </div>
         </div>
-        <div style={{ textAlign: 'right' }}>
+        <div style={{ textAlign: 'center' }}>
           <div className="lb-label">Total cashout</div>
           <div className="lb-big win">{money(f?.stats.paid ?? 0)}</div>
         </div>
+        {r && (() => {
+          const st = r.phase === 'intermission' ? Math.min(3, r.stage + 1) : r.stage;
+          return (
+            <span className={`stage-pill on lb-stage metal-${METAL[st - 1]}`} aria-label={`Stage ${stageName(st)}`}>
+              {stageName(st)}
+            </span>
+          );
+        })()}
       </div>
       <table className="lbtable">
         <thead>
@@ -827,7 +881,7 @@ function LiveBets({ s, sym }: { s: GameState; sym: string }) {
           </tr>
         </thead>
         <tbody>
-          {you && row('me', 'Me', { bet: you.bet, state: you.state, multiplier: you.multiplier, payout: you.payout, survived: mine.row?.survived ?? (myTiles.current?.roundId === you.roundId ? myTiles.current.tiles : null) }, true)}
+          {you && row('me', 'Me', { bet: you.bet, state: you.state, multiplier: you.multiplier, payout: you.payout, survived: mine.row?.survived ?? (myTiles.current?.roundId === you.roundId ? myTiles.current.tiles : null), crashMultiplier: mine.row?.crashMultiplier ?? (myTiles.current?.roundId === you.roundId ? myTiles.current.crashX : null) }, true)}
           {others.map((b, i) => row(i, b.nickname, b))}
           {f && f.moreBets > 0 && (
             <tr>
@@ -871,8 +925,8 @@ function RoundsPanel({ s, sym, top, onOpen }: { s: GameState; sym: string; top: 
       : top.query(tab, sort).map((e) => ({ key: `${e.id}@${e.t}`, id: e.id, reached: e.reached, highlights: e.highlights }));
   const isTop = tab !== 'recent';
   const sortBtn = (k: TopSort, label: string) => (
-    <button className={`sortbtn ${sort === k ? 'on' : ''}`} aria-pressed={sort === k} onClick={() => setSort(k)}>
-      {label}
+    <button className={`sortbtn ${sort === k ? 'on' : ''}`} aria-pressed={sort === k} onClick={() => setSort(k)} title={`Sort by ${label}`}>
+      {label} <span aria-hidden>▼</span>
     </button>
   );
   return (
@@ -885,16 +939,24 @@ function RoundsPanel({ s, sym, top, onOpen }: { s: GameState; sym: string; top: 
         ))}
       </div>
       <div className="rp-max">
-        Round max <b className="gold">{formatMultiplier(TOP_MULTIPLIER)}</b>
+        Round max <b className="gold">{formatMultiplier(TOP_MULTIPLIER)}</b> · Tiles <b>{STAGE_REMOVALS.reduce((a, b) => a + b, 0)}</b>
       </div>
       <table className="rounds">
         <thead>
           <tr>
             <th scope="col">Round</th>
-            <th scope="col">Top man {isTop && sortBtn('man', 'x')}</th>
             <th scope="col">
-              Top cashout {isTop && sortBtn('cashX', 'x')}
-              {isTop && sortBtn('cashWin', 'Win')}
+              Top man
+              {isTop && <div className="sortrow">{sortBtn('man', 'x')}</div>}
+            </th>
+            <th scope="col">
+              Top cashout
+              {isTop && (
+                <div className="sortrow">
+                  {sortBtn('cashX', 'x')}
+                  {sortBtn('cashWin', 'Win')}
+                </div>
+              )}
             </th>
           </tr>
         </thead>
@@ -913,12 +975,12 @@ function RoundsPanel({ s, sym, top, onOpen }: { s: GameState; sym: string; top: 
                   ) : (
                     <span>{short}</span>
                   )}
-                  <div className="sub">Reached {stageName(h.reached)}</div>
+                  <div className="sub">Reach {stageName(h.reached)}</div>
                 </td>
                 <td>
                   {tm ? (
                     <>
-                      <b className="mult-cell">{formatMultiplier(tm.multiplier)}</b>
+                      <b className="mult-cell gold-x">{formatMultiplier(tm.multiplier)}</b>
                       <div className="sub">{tm.survived} tiles</div>
                     </>
                   ) : (

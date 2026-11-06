@@ -164,6 +164,12 @@ export interface RoundEndMsg {
   emptiedAtStage: Stage | null;
   survivorsPaid: SurvivorPaid[];
   highlights: RoundHighlights;
+  /**
+   * CHANGES_8 §1: the tiles still standing at the end of the stage the round ended in, in the precommitted
+   * order (the rest of that stage's permutation). The last one is that stage's surviving tile; the client
+   * removes the others fast and frames it. Stage 3: just the 10,778x tile.
+   */
+  stageTail: number[];
   phaseEndsAt: number | null;
   serverTime: number;
 }
@@ -235,6 +241,8 @@ export interface PublicBet {
   payout: number;
   /** CHANGES_7 §2: tiles survived in the whole round (1–280) when cashed out or crashed; null while live. */
   survived: number | null;
+  /** CHANGES_8 §5: for a crashed player, the multiplier they last stood at (0 if their tile went first). */
+  crashMultiplier: number | null;
 }
 
 export interface RoomsMsg {

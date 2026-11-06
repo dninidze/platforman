@@ -42,7 +42,7 @@ const open = async (u) => {
 
 // ---- load, identity, title, labels
 await open(url);
-const env = await b.evaluate(`({ online: navigator.onLine, secure: isSecureContext, webCrypto: !!crypto.subtle, title: document.title, header: document.querySelector('.brand')?.textContent.replace(/^[^A-Za-z]+/, '').trim(), prompt: !!document.querySelector('input#nick, .join-card input'), engine: window.__p3engine(), session: window.__p3session(), stages: [...document.querySelectorAll('.stage-pill')].map((p) => p.textContent), font: getComputedStyle(document.body).fontFamily, fontOk: document.fonts.check('600 16px Montserrat') && [...document.fonts].some((x) => x.family.replace(/"/g, '') === 'Montserrat' && x.status === 'loaded'), rooms: [...document.querySelectorAll('.panel h2')].some((h) => /rooms/i.test(h.textContent)), headerItems: [...document.querySelector('.header').children].map((c) => c.className), headerH: document.querySelector('.header').getBoundingClientRect().height })`);
+const env = await b.evaluate(`({ online: navigator.onLine, secure: isSecureContext, webCrypto: !!crypto.subtle, title: document.title, header: document.querySelector('.brand')?.textContent.replace(/^[^A-Za-z]+/, '').trim(), prompt: !!document.querySelector('input#nick, .join-card input'), engine: window.__p3engine(), session: window.__p3session(), stages: [...document.querySelectorAll('.mbox .stage-pill')].map((p) => p.textContent), font: getComputedStyle(document.body).fontFamily, fontOk: document.fonts.check('600 16px Montserrat') && [...document.fonts].some((x) => x.family.replace(/"/g, '') === 'Montserrat' && x.status === 'loaded'), rooms: [...document.querySelectorAll('.panel h2')].some((h) => /rooms/i.test(h.textContent)), headerItems: [...document.querySelector('.header').children].map((c) => c.className), headerH: document.querySelector('.header').getBoundingClientRect().height })`);
 log(`loaded: ${JSON.stringify({ ...env, session: { ...env.session, playerId: env.session.playerId.slice(0, 12) + '…' } })}`);
 check('networking disabled (navigator.onLine is false)', env.online === false);
 check('title and header are "Platforman"', env.title === 'Platforman' && env.header === 'Platforman', `${env.title} / ${env.header}`);
@@ -70,6 +70,7 @@ check('multiplier reads 0.00x before the first tile', zero === '0.00x', zero);
 log(`betting open for round #${roundId}`);
 const auto = await b.evaluate(`({ text: ${mainBtn}.textContent, cls: ${mainBtn}.className, line1: ${line1}, frame: getComputedStyle(document.querySelector('.msgbox')).borderTopStyle, picked: [...document.querySelectorAll('.tile.picked')].map((t) => t.getAttribute('aria-label')) })`);
 check('betting opens with a random tile picked: green "Bet 1.00 EUR", hint on message line 1', /^Bet \d+\.\d\d [A-Z]{3}$/.test(auto.text) && auto.cls.includes('mb-green') && auto.picked.length === 1 && /selected/.test(auto.picked[0]) && /random tile #\d+/i.test(auto.line1), `${auto.text} / ${auto.line1} / ${auto.picked[0]}`);
+check('BET NOW watermark over the board while betting, tiles still clickable', await b.evaluate(`(() => { const w = document.querySelector('.betnow'); return !!w && w.textContent === 'BETNOW' && getComputedStyle(w).pointerEvents === 'none'; })()`));
 check('message box has a frame and two lines', auto.frame === 'solid' && (await b.evaluate(`document.querySelectorAll('.msgbox .msg-line').length`)) === 2);
 const amountBox = await b.evaluate(`({ group: [...(document.querySelector('.amount-group')?.children ?? [])].map((c) => c.tagName + ':' + (c.tagName === 'INPUT' ? c.value : c.textContent).trim()), weight: getComputedStyle(document.querySelector('.amount-group .amount')).fontWeight, cur: !!document.querySelector('.betbox .cur') })`);
 check('amount box: − amount + joined, number only (semibold), no currency', amountBox.group.length === 3 && /^BUTTON:−$/.test(amountBox.group[0]) && /^INPUT:\d+\.\d\d$/.test(amountBox.group[1]) && /^BUTTON:\+$/.test(amountBox.group[2]) && amountBox.weight === '600' && !amountBox.cur, `${amountBox.group.join(' ')} / ${amountBox.weight}`);
@@ -94,25 +95,26 @@ check('live bets: header active/total bets + total cashout; columns Player|Bet|T
 const masked = lb.nicks.slice(1).every((n) => /^[A-Za-z][A-Za-z]\*\*\*\w$/.test(n));
 check('live bets show only masked names', lb.nicks.length > 1 && masked, lb.nicks.slice(0, 4).join(', '));
 check('own row first, labelled "Me"', lb.nicks[0] === 'Me' && cash.me.length === 5, outcome);
-if (cash.text) check('own row after cashing out: tiles survived in green, x and Win filled', /^\d+$/.test(cash.me[2]) && /x$/.test(cash.me[3]) && cash.me[4] !== '' && (await b.evaluate(`document.querySelector('.lbtable tr.me td:nth-child(3)').className`)) === 'win', outcome);
+if (cash.text) check('own row after cashing out: green row, tiles survived, x and Win filled', /^\d+$/.test(cash.me[2]) && /x$/.test(cash.me[3]) && cash.me[4] !== '' && (await b.evaluate(`document.querySelector('.lbtable tr.me').className`)).includes('st-cashedOut'), outcome);
 const tiles = await b.evaluate(`({ bands: [...new Set([...document.querySelectorAll('.board .tile')].map((t) => [...t.classList].find((c) => c.startsWith('band-'))))], gone: [...new Set([...document.querySelectorAll('.board .tile.band-gone .tile-count')].map((x) => x.textContent))] })`);
 check('tiles carry traffic-light bands; gone tiles show only ×', tiles.bands.every((x) => /^band-(green|yellow|full|gone)$/.test(x)) && tiles.gone.join('') === '×', `${tiles.bands.join(',')} / ${tiles.gone.join('')}`);
 await b.waitFor(`/Next round in/.test(${line2})`, 300_000, 'round end');
+await b.waitFor(`document.querySelectorAll('.board .tile.winner').length === 1`, 2_000, 'single surviving tile');
 const end = await b.evaluate(`({ message: ${line1}, line2: ${line2}, covered: !!document.querySelector('.loading'), left: document.querySelectorAll('.board .tile:not(.band-gone)').length, winner: [...document.querySelectorAll('.board .tile.winner')].map((t) => t.getAttribute('aria-label')), max: document.querySelector('.rp-max')?.textContent, tabs: [...document.querySelectorAll('.rp-tab')].map((t) => t.textContent), history: [...(document.querySelector('.rounds tbody tr')?.children ?? [])].map((td) => [...td.childNodes].map((n) => n.textContent).join(' / ')), heads: [...document.querySelectorAll('.rounds th')].map((th) => th.textContent.trim()) })`);
 log(`round over: ${JSON.stringify(end)}`);
-check('round played to its end; message on line 1, countdown on line 2, board not covered yet', (end.message ?? '').length > 0 && /^Next round in/.test(end.line2) && !end.covered && [1, 9, 10].includes(end.left), `${end.message} / ${end.line2} / tiles standing ${end.left}`);
-check('the tiles that survived the last stage played have the gold frame', end.winner.length === end.left && end.winner.every((w) => /survived the stage/.test(w)), `${end.winner.length} framed`);
+check('round played to its end; message on line 1, countdown on line 2, board not covered yet', (end.message ?? '').length > 0 && /^Next round in/.test(end.line2) && !end.covered && end.left === 1, `${end.message} / ${end.line2} / tiles standing ${end.left}`);
+check('only the stage surviving tile stays standing, with the gold frame', end.winner.length === 1 && end.left === 1 && /survived the stage/.test(end.winner[0]), `${end.left} standing, ${end.winner.length} framed`);
 await b.waitFor(`!!document.querySelector('.loading')`, 4_000, 'loading screen');
 const loadStart = Date.now();
 await b.waitFor(`!document.querySelector('.loading') && /Betting closes/.test(${line2})`, 8_000, 'betting after loading');
 const loadMs = Date.now() - loadStart;
-check('5 s loading screen between rounds, then betting', loadMs > 4_000 && loadMs < 6_500, `${loadMs} ms`);
+check('3 s loading screen between rounds, then betting', loadMs > 2_200 && loadMs < 4_500, `${loadMs} ms`);
 check(
   'Recent / Top: tabs, "Round max 10,778x" in the header, Round | Top man | Top cashout two-line cells',
   end.tabs.join('|') === 'Recent|24h|Week|Month|Year' &&
-    end.max === 'Round max 10,778x' &&
+    end.max === 'Round max 10,778x · Tiles 280' &&
     end.heads.join('|') === 'Round|Top man|Top cashout' &&
-    /^#\d+ \/ Reached (10x|100x|10kx)$/.test(end.history[0]) &&
+    /^#\d+ \/ Reach (10x|100x|10kx)$/.test(end.history[0]) &&
     /^(\d[\d,.]*x \/ \d+ tiles|–)$/.test(end.history[1]) &&
     /^(\d[\d,.]*x \/ \D?[\d,.]+|–)$/.test(end.history[2]),
   end.history.join(' | '),
@@ -155,7 +157,7 @@ const external = b.external();
 await open(url);
 await b.evaluate(`[...document.querySelectorAll('.rp-tab')].find((t) => t.textContent === '24h').click(), true`);
 await sleep(300);
-const topView = await b.evaluate(`({ heads: [...document.querySelectorAll('.rounds th')].map((th) => th.textContent), sorts: [...document.querySelectorAll('.sortbtn')].map((x) => x.textContent + (x.classList.contains('on') ? '*' : '')), rows: [...document.querySelectorAll('.rounds tbody tr')].map((tr) => tr.textContent) })`);
+const topView = await b.evaluate(`({ heads: [...document.querySelectorAll('.rounds th')].map((th) => th.textContent), sorts: [...document.querySelectorAll('.sortbtn')].map((x) => x.textContent.replace('▼', '').trim()+ (x.classList.contains('on') ? '*' : '')), rows: [...document.querySelectorAll('.rounds tbody tr')].map((tr) => tr.textContent) })`);
 check('Top 24h keeps the rounds after a reload; default sort Top man x; x | Win switch on Top cashout', topView.rows.length >= 1 && !/No rounds/.test(topView.rows[0]) && topView.sorts.join(',') === 'x*,x,Win', `${topView.rows.length} rows / ${topView.sorts.join(',')}`);
 
 check('no network requests', external.length === 0, external.join(' '));

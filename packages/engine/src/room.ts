@@ -29,7 +29,11 @@ import {
   type TimerHandle,
   type YouMsg,
   tilesSurvived,
+  getMultiplier100,
 } from '@p3/shared';
+
+/** Multiplier a player lost at removal k of `stage` last stood at; 0 when their tile went first in the round. */
+const crashMultiplier = (stage: Stage, k: number) => (stage === 1 && k === 1 ? 0 : getMultiplier100(stage, k - 1) / 100);
 import type { AuditLog, PlayerAudit, RoundRecord } from './audit';
 import type { Wallet } from './wallet';
 
@@ -360,6 +364,7 @@ export class Room {
       emptiedAtStage: core.emptiedAtStage,
       survivorsPaid: survivors.map((p) => ({ nickname: maskName(this.nick(p.id)), amount: p.payout })),
       highlights,
+      stageTail: this.permutations[core.stage - 1].slice(STAGE_REMOVALS[core.stage - 1]),
       phaseEndsAt: this.phaseEndsAt,
       serverTime: at,
     });
@@ -644,7 +649,7 @@ export class Room {
     const listed: RoundPlayer[] = [];
     for (const [group, key] of [
       [live, (p: RoundPlayer) => p.bet],
-      [cashed, (p: RoundPlayer) => p.payout],
+      [cashed, (p: RoundPlayer) => (p.multiplier100 ?? 0) * 1e9 + p.payout], // CHANGES_8 §5: highest multiplier first
       [gone, (p: RoundPlayer) => p.bet],
     ] as const) {
       if (listed.length >= LIST_LIMIT) break;
@@ -665,6 +670,7 @@ export class Room {
         multiplier: p.multiplier100 === null ? null : p.multiplier100 / 100,
         payout: p.payout,
         survived: tilesSurvived(p),
+        crashMultiplier: p.outcome === 'lost' && p.resolvedStage !== null && p.resolvedK !== null ? crashMultiplier(p.resolvedStage, p.resolvedK) : null,
       })),
       moreBets: this.core.players.size - listed.length,
     };
