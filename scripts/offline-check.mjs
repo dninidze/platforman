@@ -82,6 +82,7 @@ await b.evaluate(`${mainBtn}.click(), true`);
 await b.waitFor(`/^Cancel bet \\d+\\.\\d\\d [A-Z]{3}$/.test(${mainBtn}.textContent) && ${mainBtn}.className.includes('mb-red')`, 5_000, 'bet accepted');
 const frame = await b.evaluate(`({ cls: document.querySelector('.tile.mine')?.className, badge: document.querySelector('.tile.mine .you-badge')?.textContent })`);
 check('after betting: red "Cancel bet …", own tile framed bronze and labelled ME', /metal-bronze/.test(frame.cls ?? '') && frame.badge === 'ME', `${frame.cls} / ${frame.badge}`);
+check('BET NOW watermark disappears once the bet is placed', await b.evaluate(`!document.querySelector('.betnow')`));
 await b.waitFor(`/^Tiles left/.test(${line2})`, 15_000, 'running');
 await b.waitFor(`(() => { const x = ${mainBtn}; if (/^Cash out \\d/.test(x.textContent) && !x.disabled) { window.__cashText = x.textContent; window.__cashCls = x.className; x.click(); return true; } return /^Bet /.test(x.textContent); })()`, 15_000, 'cashout or loss');
 await sleep(800);

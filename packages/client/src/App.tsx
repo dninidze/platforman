@@ -619,7 +619,7 @@ function Board({
   return (
     <div className="board-wrap">
     <LoadingScreen s={s} />
-    {r.phase === 'betting' && (
+    {r.phase === 'betting' && you?.state !== 'betting' && (
       <div className="betnow" aria-hidden>
         <span>BET</span>
         <span>NOW</span>
