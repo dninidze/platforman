@@ -20,7 +20,7 @@ export interface GameConfig {
   /** Resurrection pause while an emptied board plays on to the last tile (CHANGES_6 §5). */
   fastIntermissionMs: number;
   resultsMs: number;
-  /** Last part of resultsMs shown as the loading screen (client only). */
+  /** First part of the betting phase shown as the loading screen (client only; CHANGES_9 F2). */
   loadingMs: number;
   /** Move lock before each removal (BUILD_SPEC §3.4). 0 = disabled (CHANGES_3 §1). */
   moveLockMs: number;
@@ -57,8 +57,8 @@ export const DEFAULT_CONFIG: GameConfig = {
   bettingMs: 10_000,
   intermissionMs: 3_000,
   fastIntermissionMs: 300,
-  /** CHANGES_8 §2: 2 s result, then the 3 s loading screen (loadingMs), then betting. */
-  resultsMs: 5_000,
+  /** CHANGES_9 F2: 2 s result; betting then opens and its first loadingMs run under the loading screen. */
+  resultsMs: 2_000,
   loadingMs: 3_000,
   moveLockMs: 0,
   tileCapacity: 0,

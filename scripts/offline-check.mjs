@@ -63,13 +63,13 @@ check('reload keeps the same name and id', name2 === name1 && (await b.evaluate(
 const mainBtn = `document.querySelector('.mainbtn')`;
 const line1 = `(document.querySelector('.msgbox .msg-line:nth-child(1)')?.textContent || '')`;
 const line2 = `(document.querySelector('.msgbox .msg-line:nth-child(2)')?.textContent || '')`;
-await b.waitFor(`(() => { const m = ${line2}.match(/Betting closes in ([\\d.]+) s/); return m && Number(m[1]) > 4; })()`, 240_000, 'betting phase');
+await b.waitFor(`(() => { const m = ${line2}.match(/Betting closes in ([\\d.]+) s/); return m && Number(m[1]) > 4 && !document.querySelector('.loading'); })()`, 240_000, 'betting phase');
 const roundId = await b.evaluate(`window.__p3round().split('#')[1]`);
 const zero = await b.evaluate(`document.querySelector('.mbox .mult').textContent`);
 check('multiplier reads 0.00x before the first tile', zero === '0.00x', zero);
 log(`betting open for round #${roundId}`);
-const auto = await b.evaluate(`({ text: ${mainBtn}.textContent, cls: ${mainBtn}.className, line1: ${line1}, frame: getComputedStyle(document.querySelector('.msgbox')).borderTopStyle, picked: [...document.querySelectorAll('.tile.picked')].map((t) => t.getAttribute('aria-label')) })`);
-check('betting opens with a random tile picked: green "Bet 1.00 EUR", hint on message line 1', /^Bet \d+\.\d\d [A-Z]{3}$/.test(auto.text) && auto.cls.includes('mb-green') && auto.picked.length === 1 && /selected/.test(auto.picked[0]) && /random tile #\d+/i.test(auto.line1), `${auto.text} / ${auto.line1} / ${auto.picked[0]}`);
+const auto = await b.evaluate(`({ text: ${mainBtn}.textContent, cls: ${mainBtn}.className, line1: ${line1}, frame: getComputedStyle(document.querySelector('.msgbox')).borderTopStyle, tags: [...document.querySelectorAll('.tile.picked .tag-bet, .tile.picked .tag-now')].map((t) => t.textContent).join('/'), picked: [...document.querySelectorAll('.tile.picked')].map((t) => t.getAttribute('aria-label')) })`);
+check('betting opens with a random tile picked: green "Bet 1.00 EUR", "Bet random or choose tile" on line 1', /^Bet \d+\.\d\d [A-Z]{3}$/.test(auto.text) && auto.cls.includes('mb-green') && auto.picked.length === 1 && /selected/.test(auto.picked[0]) && auto.line1 === 'Bet random or choose tile', `${auto.text} / ${auto.line1} / ${auto.picked[0]}`);
 check('BET NOW watermark over the board while betting, tiles still clickable', await b.evaluate(`(() => { const w = document.querySelector('.betnow'); return !!w && w.textContent === 'BETNOW' && getComputedStyle(w).pointerEvents === 'none'; })()`));
 check('message box has a frame and two lines', auto.frame === 'solid' && (await b.evaluate(`document.querySelectorAll('.msgbox .msg-line').length`)) === 2);
 const amountBox = await b.evaluate(`({ group: [...(document.querySelector('.amount-group')?.children ?? [])].map((c) => c.tagName + ':' + (c.tagName === 'INPUT' ? c.value : c.textContent).trim()), weight: getComputedStyle(document.querySelector('.amount-group .amount')).fontWeight, cur: !!document.querySelector('.betbox .cur') })`);
@@ -77,13 +77,14 @@ check('amount box: − amount + joined, number only (semibold), no currency', am
 await b.evaluate(`(() => { const t = [...document.querySelectorAll('.board .tile')].find((x) => !x.disabled && !x.classList.contains('picked')); t.click(); return true; })()`);
 await sleep(200);
 const yours = await b.evaluate(line1);
-check('tapping another tile: message line 1 "Tile #n selected"', /^Tile #\d+ selected$/.test(yours), yours);
-await b.evaluate(`${mainBtn}.click(), true`);
+check('tapping another tile: Bet/Now moves with the frame; line 1 "Tap the tile again to bet"', yours === 'Tap the tile again to bet' && (await b.evaluate(`[...document.querySelectorAll('.tile.picked .tag-bet, .tile.picked .tag-now')].map((t) => t.textContent).join('/')`)) === 'Bet/Now' && auto.tags === 'Bet/Now', yours);
+await b.evaluate(`document.querySelector('.tile.picked').click(), true`); // CHANGES_9 B3: tap the framed tile again to bet
 await b.waitFor(`/^Cancel bet \\d+\\.\\d\\d [A-Z]{3}$/.test(${mainBtn}.textContent) && ${mainBtn}.className.includes('mb-red')`, 5_000, 'bet accepted');
 const frame = await b.evaluate(`({ cls: document.querySelector('.tile.mine')?.className, badge: document.querySelector('.tile.mine .you-badge')?.textContent })`);
-check('after betting: red "Cancel bet …", own tile framed bronze and labelled ME', /metal-bronze/.test(frame.cls ?? '') && frame.badge === 'ME', `${frame.cls} / ${frame.badge}`);
+check('second tap on the framed tile bets: red "Cancel bet …", own tile framed bronze and labelled ME', /metal-bronze/.test(frame.cls ?? '') && frame.badge === 'ME', `${frame.cls} / ${frame.badge}`);
 check('BET NOW watermark disappears once the bet is placed', await b.evaluate(`!document.querySelector('.betnow')`));
-await b.waitFor(`/^Tiles left/.test(${line2})`, 15_000, 'running');
+await b.waitFor(`/^Tiles \\d+\\/\\d+$/.test(${line2})`, 15_000, 'running');
+check('tile counter counts up: "Tiles n/91"', /^Tiles \d+\/91$/.test(await b.evaluate(line2)), await b.evaluate(line2));
 await b.waitFor(`(() => { const x = ${mainBtn}; if (/^Cash out \\d/.test(x.textContent) && !x.disabled) { window.__cashText = x.textContent; window.__cashCls = x.className; x.click(); return true; } return /^Bet /.test(x.textContent); })()`, 15_000, 'cashout or loss');
 await sleep(800);
 const cash = await b.evaluate(`({ text: window.__cashText ?? null, cls: window.__cashCls ?? null, after: ${mainBtn}.textContent, line1: ${line1}, me: [...(document.querySelector('.lbtable tr.me')?.children ?? [])].map((td) => td.textContent) })`);
@@ -93,27 +94,29 @@ if (cash.text) check('running: yellow "Cash out 1.01 EUR"', /mb-yellow/.test(cas
 check('no active bet while running: green "Bet 1.00 EUR" (queues for next round)', /^Bet \d+\.\d\d [A-Z]{3}$/.test(cash.after), cash.after);
 const lb = await b.evaluate(`({ heads: [...document.querySelectorAll('.lbtable th')].map((t) => t.textContent), nicks: [...document.querySelectorAll('.lbtable td.nick')].map((n) => n.textContent), labels: [...document.querySelectorAll('.lb-label')].map((x) => x.textContent), big: [...document.querySelectorAll('.lb-big')].map((x) => x.textContent), stats: !!document.querySelector('.kv.stats') })`);
 check('live bets: header active/total bets + total cashout; columns Player|Bet|Tiles|x|Win; no stats block', lb.heads.join('|') === 'Player|Bet|Tiles|x|Win' && /^[\d,]+ \/ [\d,]+$/.test(lb.big[0]) && lb.labels[1] === 'Total cashout' && !lb.stats, `${lb.big.join(' · ')} / ${lb.heads.join('|')}`);
-const masked = lb.nicks.slice(1).every((n) => /^[A-Za-z][A-Za-z]\*\*\*\w$/.test(n));
+const masked = lb.nicks.filter((n) => !n.endsWith(' (Me)')).every((n) => /^[A-Za-z][A-Za-z]\*\*\*\w$/.test(n));
 check('live bets show only masked names', lb.nicks.length > 1 && masked, lb.nicks.slice(0, 4).join(', '));
-check('own row first, labelled "Me"', lb.nicks[0] === 'Me' && cash.me.length === 5, outcome);
+check('own row in its normal place, with my full name and "(Me)"', lb.nicks.includes(`${name1} (Me)`) && cash.me.length === 5 && cash.me[0] === `${name1} (Me)`, outcome);
+check('side sections titled "Live bets" and "History"', (await b.evaluate(`[...document.querySelectorAll('.left-col h2, .right-col h2')].map((h) => h.textContent).join('|')`)) === 'Live bets|History');
 if (cash.text) check('own row after cashing out: green row, tiles survived, x and Win filled', /^\d+$/.test(cash.me[2]) && /x$/.test(cash.me[3]) && cash.me[4] !== '' && (await b.evaluate(`document.querySelector('.lbtable tr.me').className`)).includes('st-cashedOut'), outcome);
 const tiles = await b.evaluate(`({ bands: [...new Set([...document.querySelectorAll('.board .tile')].map((t) => [...t.classList].find((c) => c.startsWith('band-'))))], gone: [...new Set([...document.querySelectorAll('.board .tile.band-gone .tile-count')].map((x) => x.textContent))] })`);
 check('tiles carry traffic-light bands; gone tiles show only ×', tiles.bands.every((x) => /^band-(green|yellow|full|gone)$/.test(x)) && tiles.gone.join('') === '×', `${tiles.bands.join(',')} / ${tiles.gone.join('')}`);
 await b.waitFor(`/Next round in/.test(${line2})`, 300_000, 'round end');
-await b.waitFor(`document.querySelectorAll('.board .tile.winner').length === 1`, 2_000, 'single surviving tile');
+await b.waitFor(`document.querySelectorAll('.board .tile.winner').length >= 1`, 2_000, 'framed tiles');
 const end = await b.evaluate(`({ message: ${line1}, line2: ${line2}, covered: !!document.querySelector('.loading'), left: document.querySelectorAll('.board .tile:not(.band-gone)').length, winner: [...document.querySelectorAll('.board .tile.winner')].map((t) => t.getAttribute('aria-label')), max: document.querySelector('.rp-max')?.textContent, tabs: [...document.querySelectorAll('.rp-tab')].map((t) => t.textContent), history: [...(document.querySelector('.rounds tbody tr')?.children ?? [])].map((td) => [...td.childNodes].map((n) => n.textContent).join(' / ')), heads: [...document.querySelectorAll('.rounds th')].map((th) => th.textContent.trim()) })`);
 log(`round over: ${JSON.stringify(end)}`);
-check('round played to its end; message on line 1, countdown on line 2, board not covered yet', (end.message ?? '').length > 0 && /^Next round in/.test(end.line2) && !end.covered && end.left === 1, `${end.message} / ${end.line2} / tiles standing ${end.left}`);
-check('only the stage surviving tile stays standing, with the gold frame', end.winner.length === 1 && end.left === 1 && /survived the stage/.test(end.winner[0]), `${end.left} standing, ${end.winner.length} framed`);
+check('round played to its end; message on line 1, countdown on line 2, board not covered yet', (end.message ?? '').length > 0 && /^Next round in/.test(end.line2) && !end.covered && [1, 9, 10].includes(end.left), `${end.message} / ${end.line2} / tiles standing ${end.left}`);
+check('stage 1 / 2 keep their 9 / 10 standing tiles, stage 3 one; all framed', end.winner.length === end.left && [1, 9, 10].includes(end.left) && end.winner.every((w) => /survived the stage/.test(w)), `${end.left} standing, ${end.winner.length} framed`);
 await b.waitFor(`!!document.querySelector('.loading')`, 4_000, 'loading screen');
+check('betting is already open under the loading screen', /Betting closes in/.test(await b.evaluate(line2)), await b.evaluate(line2));
 const loadStart = Date.now();
 await b.waitFor(`!document.querySelector('.loading') && /Betting closes/.test(${line2})`, 8_000, 'betting after loading');
 const loadMs = Date.now() - loadStart;
 check('3 s loading screen between rounds, then betting', loadMs > 2_200 && loadMs < 4_500, `${loadMs} ms`);
 check(
-  'Recent / Top: tabs, "Round max 10,778x" in the header, Round | Top man | Top cashout two-line cells',
+  'Recent / Top: tabs, "All rounds: max 10,778x · Tiles 280" under History, Round | Top man | Top cashout two-line cells',
   end.tabs.join('|') === 'Recent|24h|Week|Month|Year' &&
-    end.max === 'Round max 10,778x · Tiles 280' &&
+    end.max === 'All rounds: max 10,778x · Tiles 280' &&
     end.heads.join('|') === 'Round|Top man|Top cashout' &&
     /^#\d+ \/ Reach (10x|100x|10kx)$/.test(end.history[0]) &&
     /^(\d[\d,.]*x \/ \d+ tiles|–)$/.test(end.history[1]) &&

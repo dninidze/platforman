@@ -107,6 +107,8 @@ export interface GameState {
   lastGone: { tile: number; key: number } | null;
   lostAt: number | null;
   toasts: Toast[];
+  /** CHANGES_9 B5: a rejected action, shown on message line 1 for 3 s (client time). */
+  notice: { text: string; at: number } | null;
   /** serverTime - Date.now() */
   offset: number;
   resyncs: number;
@@ -156,6 +158,7 @@ const initial: GameState = {
   lastGone: null,
   lostAt: null,
   toasts: [],
+  notice: null,
   offset: 0,
   resyncs: 0,
   transport: '',
@@ -279,6 +282,11 @@ export class GameClient {
   }
   spectate(roomId: string) {
     this.send({ t: 'spectate', roomId, rid: ++this.rid });
+  }
+
+  /** CHANGES_9 B5: game-action messages go to the message box, not over the screen. */
+  notify(text: string) {
+    this.set({ notice: { text, at: Date.now() } });
   }
 
   toast(text: string, kind: Toast['kind'] = 'error') {
@@ -450,19 +458,18 @@ export class GameClient {
         return;
       }
       case 'betResult':
-        if (!m.ok) this.toast(reasonText(m.reason));
+        if (!m.ok) this.notify(reasonText(m.reason));
         return;
       case 'cancelResult':
-        if (!m.ok) this.toast(reasonText(m.reason));
+        if (!m.ok) this.notify(reasonText(m.reason));
         return;
       case 'moveResult':
-        if (!m.ok) this.toast(reasonText(m.reason));
+        if (!m.ok) this.notify(reasonText(m.reason));
         // The server confirmed the move; reflect the new tile without waiting for another 'you'.
         else if (s.you && m.tileId !== undefined) this.set({ you: { ...s.you, tileId: m.tileId } });
         return;
       case 'cashoutResult':
-        if (!m.ok) this.toast(reasonText(m.reason));
-        else this.toast(`Cashed out ${formatMultiplier(m.multiplier ?? 0)}`, 'win');
+        if (!m.ok) this.notify(reasonText(m.reason));
         return;
       case 'error':
         this.toast(m.message || reasonText(m.code));

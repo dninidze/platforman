@@ -148,6 +148,8 @@ export function App() {
   const [queued, setQueued] = useState<number | null>(null);
   /** CHANGES_5 §2: bumps when a tile is tapped while not in the game; the bet section pulses yellow. */
   const [nudge, setNudge] = useState(0);
+  /** CHANGES_9 C3: with a queued bet, a tile tap lights the message box instead. */
+  const [msgNudge, setMsgNudge] = useState(0);
   /** Round opened from "Recent rounds" (round details + verification). */
   const [detailsFor, setDetailsFor] = useState<string | null>(null);
 
@@ -165,10 +167,27 @@ export function App() {
   }, [lastEnded]); // eslint-disable-line react-hooks/exhaustive-deps
   // CHANGES_7 §9 "My bets": this session's own results.
   const you = s.you;
+  const lastAliveX = useRef(0);
+  if (you?.state === 'alive' && r && you.roundId === r.roundId) lastAliveX.current = r.stage === 1 && r.removed === 0 ? 0 : r.multiplier;
   useEffect(() => {
     if (!you || !r || you.roundId !== r.roundId || r.phase !== 'ended' || you.state === 'idle' || you.state === 'betting') return;
-    myBets.record({ roundId: you.roundId, bet: you.bet, state: you.state, multiplier: you.multiplier, payout: you.payout });
+    const reach = you.state === 'cashedOut' ? (you.multiplier ?? 0) : you.state === 'lost' ? lastAliveX.current : r.multiplier;
+    myBets.record({ roundId: you.roundId, bet: you.bet, state: you.state, multiplier: you.multiplier, payout: you.payout, reach });
   }, [you, r?.phase, r?.roundId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // CHANGES_9 J1: on narrow screens the page is fixed until a side section is opened; scrolling back to the top closes it.
+  useEffect(() => {
+    const narrow = () => window.matchMedia('(max-width: 1099px)').matches;
+    document.documentElement.classList.toggle('locked', narrow() && side === null);
+    if (side === null) return;
+    let away = false;
+    const onScroll = () => {
+      if (window.scrollY > 40) away = true;
+      else if (away && window.scrollY <= 0) setSide(null);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    if (narrow()) requestAnimationFrame(() => document.querySelector(side === 'bets' ? '.left-col' : '.right-col')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [side]);
   // When betting opens: pick a random tile, and place a queued bet on it.
   useEffect(() => {
     if (phase !== 'betting' || !roundId) return;
@@ -214,9 +233,21 @@ export function App() {
 
       <main className="layout">
         <section className="center-col" aria-label="Game">
-          <Board s={s} spectating={spectating} pick={pick} setPick={setPick} onNudge={() => setNudge((n) => n + 1)} />
+          <Board
+            s={s}
+            spectating={spectating}
+            pick={pick}
+            setPick={setPick}
+            onNudge={() => (queued !== null ? setMsgNudge((n) => n + 1) : setNudge((n) => n + 1))}
+            onBetTile={(t) => {
+              const minor = Math.round(Number(amount) * 100);
+              const cfg = s.config;
+              if (cfg && Number.isFinite(minor) && minor >= cfg.minBet && minor <= cfg.maxBet) client.bet(minor, t);
+              else client.notify('Enter a valid bet amount');
+            }}
+          />
           <div className="under">
-            <MultiplierSection s={s} pick={pick} queued={queued} />
+            <MultiplierSection s={s} pick={pick} queued={queued} nudge={msgNudge} />
             {!spectating && <BetSection s={s} pick={pick} amount={amount} setAmount={setAmount} queued={queued} setQueued={setQueued} nudge={nudge} />}
           </div>
           <div className="side-toggles" role="group" aria-label="Show a side section">
@@ -224,14 +255,14 @@ export function App() {
               Live bets
             </button>
             <button className={`side-toggle ${side === 'rounds' ? 'on' : ''}`} aria-pressed={side === 'rounds'} onClick={() => setSide(side === 'rounds' ? null : 'rounds')}>
-              Rounds
+              History
             </button>
           </div>
         </section>
         <aside className={`left-col ${side === 'bets' ? 'side-open' : ''}`} aria-label="Live bets">
           <LiveBets s={s} sym={sym} />
         </aside>
-        <aside className={`right-col ${side === 'rounds' ? 'side-open' : ''}`} aria-label="Past games">
+        <aside className={`right-col ${side === 'rounds' ? 'side-open' : ''}`} aria-label="History">
           <RoundsPanel s={s} sym={sym} top={topResults} onOpen={setDetailsFor} />
         </aside>
       </main>
@@ -245,7 +276,18 @@ export function App() {
       </div>
       {fairOpen && <FairnessModal s={s} client={client} onClose={() => setFairOpen(false)} />}
       {detailsFor && <FairnessModal s={s} client={client} roundId={detailsFor} onClose={() => setDetailsFor(null)} />}
-      {page && <InfoModal page={page} s={s} sym={sym} onClose={() => setPage(null)} />}
+      {page && (
+        <InfoModal
+          page={page}
+          s={s}
+          sym={sym}
+          onClose={() => setPage(null)}
+          onOpenRound={(id) => {
+            setPage(null);
+            setDetailsFor(id);
+          }}
+        />
+      )}
       {devOpen && (
         <SettingsPanel
           s={s}
@@ -273,6 +315,8 @@ interface MyBet {
   state: string;
   multiplier: number | null;
   payout: number;
+  /** CHANGES_9 H1: cash-out x, or the x the player last stood at. */
+  reach: number;
 }
 const myBets = {
   list: [] as MyBet[],
@@ -357,7 +401,8 @@ function SettingsMenu({
   );
 }
 
-function InfoModal({ page, s, sym, onClose }: { page: InfoPage; s: GameState; sym: string; onClose: () => void }) {
+function InfoModal({ page, s, sym, onClose, onOpenRound }: { page: InfoPage; s: GameState; sym: string; onClose: () => void; onOpenRound: (id: string) => void }) {
+  const inSession = new Set(s.history.map((h) => h.roundId));
   const cfg = s.config;
   const title = page === 'howToPlay' ? `How to play ${GAME_TITLE}` : page === 'limits' ? 'Game limits' : 'My bets';
   return (
@@ -399,28 +444,37 @@ function InfoModal({ page, s, sym, onClose }: { page: InfoPage; s: GameState; sy
               <tr>
                 <th scope="col">Round</th>
                 <th scope="col">Bet</th>
-                <th scope="col">Result</th>
+                <th scope="col">Reach x</th>
+                <th scope="col">Cashout x</th>
                 <th scope="col">Win</th>
               </tr>
             </thead>
             <tbody>
               {myBets.list.map((b) => (
                 <tr key={b.roundId}>
-                  <td>#{b.roundId.split('#')[1]}</td>
+                  <td>
+                    {inSession.has(b.roundId) ? (
+                      <button className="link" onClick={() => onOpenRound(b.roundId)} title={`${b.roundId}: details and verification`}>
+                        #{b.roundId.split('#')[1]}
+                      </button>
+                    ) : (
+                      <span>#{b.roundId.split('#')[1]}</span>
+                    )}
+                  </td>
                   <td>
                     {sym}
                     {formatMoney(b.bet)}
                   </td>
-                  <td className={b.state === 'lost' ? 'loss' : 'win'}>{b.state === 'lost' ? 'Crashed' : b.multiplier !== null ? formatMultiplier(b.multiplier) : ''}</td>
-                  <td>
-                    {sym}
-                    {formatMoney(b.payout)}
+                  <td>{formatMultiplier(b.reach)}</td>
+                  <td className="win">{b.state === 'cashedOut' && b.multiplier !== null ? formatMultiplier(b.multiplier) : ''}</td>
+                  <td className="win">
+                    {b.state === 'cashedOut' ? `${sym}${formatMoney(b.payout)}` : ''}
                   </td>
                 </tr>
               ))}
               {myBets.list.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="muted">
+                  <td colSpan={5} className="muted">
                     No bets in this session yet
                   </td>
                 </tr>
@@ -486,8 +540,9 @@ function gameLine(s: GameState, now: number): string {
   if (r.phase === 'betting') return `Betting closes in ${secs} s`;
   if (r.phase === 'intermission') return `${stageName(r.stage + 1)} starts in ${secs} s`;
   if (r.phase === 'ended') return `Next round in ${secs} s`;
+  // CHANGES_9 D1: counts up, per stage.
   const len = STAGE_REMOVALS[r.stage - 1];
-  return `Tiles left: ${len - r.removed} of ${len}`;
+  return `Tiles ${r.removed}/${len}`;
 }
 
 /** Message line 1 (CHANGES_7 §6): the player's messages, else game events (resurrection, round result). */
@@ -495,17 +550,19 @@ function playerLine(s: GameState, now: number, pick: Pick | null, queued: number
   const r = s.round!;
   const cur = s.config?.currency ?? '';
   const you = s.you?.roundId === r.roundId ? s.you : null;
-  if (you?.state === 'betting') return { text: `You're on tile #${(you.tileId ?? 0) + 1}. Tap a tile to move`, kind: 'me' };
+  // CHANGES_9 B5: a rejected action (tile full, …) for 3 s.
+  if (s.notice && Date.now() - s.notice.at < 3_000) return { text: s.notice.text, kind: 'loss' };
+  if (you?.state === 'betting') return { text: 'Bet placed. Tap a tile to move', kind: 'me' };
   if (you?.state === 'alive') {
     if (r.phase === 'intermission') return { text: `You survived ${stageName(r.stage)}! Move or cash out`, kind: 'win' };
-    return { text: `You're on tile #${(you.tileId ?? 0) + 1}`, kind: 'me' };
+    return { text: "You're in the game", kind: 'me' };
   }
   if (you?.state === 'cashedOut') return { text: `Cashed out ${formatMultiplier(you.multiplier ?? 0)} · ${formatMoney(you.payout)} ${cur}`, kind: 'win' };
   // CHANGES_8 §7: "Your tile is gone" for 5 s, then the bet prompt again.
   if (you?.state === 'lost' && s.lostAt !== null && now - (s.lostAt + s.offset) < 5000) return { text: 'Your tile is gone', kind: 'loss' };
   if (queued !== null) return { text: 'Your bet goes on a random tile next round', kind: 'me' };
-  if (r.phase === 'betting' && pick) {
-    return pick.random ? { text: `Random tile #${pick.tile + 1} · tap a tile to choose`, kind: 'hint' } : { text: `Tile #${pick.tile + 1} selected`, kind: 'hint' };
+  if (r.phase === 'betting') {
+    return pick && !pick.random ? { text: 'Tap the tile again to bet', kind: 'hint' } : { text: 'Bet random or choose tile', kind: 'hint' };
   }
   if (r.phase === 'intermission') {
     const tiles = r.survived?.filter(Boolean).length ?? 0;
@@ -514,7 +571,7 @@ function playerLine(s: GameState, now: number, pick: Pick | null, queued: number
   }
   if (r.phase === 'ended') {
     const last = s.revealed[0]?.roundId === r.roundId ? s.revealed[0] : null;
-    if (last?.survivorsPaid.length) return { text: `${last.survivorsPaid.length} won ${formatMultiplier(TOP_MULTIPLIER)} on tile #${last.jackpotTile + 1}!`, kind: 'win' };
+    if (last?.survivorsPaid.length) return { text: `${last.survivorsPaid.length} won ${formatMultiplier(TOP_MULTIPLIER)}!`, kind: 'win' };
     if (last?.emptiedAtStage) return { text: `Round over at ${stageName(last.emptiedAtStage)}`, kind: 'info' };
     return { text: 'Round over', kind: 'info' };
   }
@@ -525,7 +582,7 @@ function playerLine(s: GameState, now: number, pick: Pick | null, queued: number
  * Under the grid, left (fixed size): stage tabs 10x / 100x / 10kx, the multiplier, the two-line message box
  * (thin grey frame) and "Tiles left: X of Y". Bronze / silver / gold frame by stage.
  */
-function MultiplierSection({ s, pick, queued }: { s: GameState; pick: Pick | null; queued: number | null }) {
+function MultiplierSection({ s, pick, queued, nudge }: { s: GameState; pick: Pick | null; queued: number | null; nudge: number }) {
   const now = useNow();
   const r = s.round;
   if (!r) return <div className="mbox" />;
@@ -547,7 +604,7 @@ function MultiplierSection({ s, pick, queued }: { s: GameState; pick: Pick | nul
       <div className="mult" aria-live="polite" aria-atomic="true">
         {formatMultiplier(notStarted ? 0 : r.multiplier)}
       </div>
-      <div className="msgbox" role="status" aria-live="polite">
+      <div className={`msgbox ${nudge ? `nudge-${nudge % 2}` : ''}`} role="status" aria-live="polite">
         <Marquee text={top.text} />
         <Marquee text={game} />
       </div>
@@ -558,16 +615,34 @@ function MultiplierSection({ s, pick, queued }: { s: GameState; pick: Pick | nul
 /** CHANGES_8 §6: one line; text wider than the box scrolls like a ticker. */
 function Marquee({ text }: { text: string }) {
   const box = useRef<HTMLDivElement>(null);
-  const [run, setRun] = useState(false);
+  const [long, setLong] = useState(false);
   useEffect(() => {
     const el = box.current;
-    if (!el) return;
-    const span = el.firstElementChild as HTMLElement;
-    setRun(span.scrollWidth > el.clientWidth + 1);
+    const span = el?.firstElementChild as HTMLElement | null;
+    if (!el || !span) return;
+    const d = span.scrollWidth - el.clientWidth;
+    setLong(d > 1);
+    if (d <= 1 || !span.animate) return;
+    // CHANGES_9 C1: wait 1 s, scroll to the end at ~40 px/s, wait 1 s, scroll back, wait 1 s, then stay still.
+    const move = (d / 40) * 1000;
+    const total = 3_000 + 2 * move;
+    const at = (ms: number) => ms / total;
+    const anim = span.animate(
+      [
+        { transform: 'translateX(0)', offset: 0 },
+        { transform: 'translateX(0)', offset: at(1_000) },
+        { transform: `translateX(${-d}px)`, offset: at(1_000 + move) },
+        { transform: `translateX(${-d}px)`, offset: at(2_000 + move) },
+        { transform: 'translateX(0)', offset: at(2_000 + 2 * move) },
+        { transform: 'translateX(0)', offset: 1 },
+      ],
+      { duration: total, easing: 'linear' },
+    );
+    return () => anim.cancel();
   }, [text]);
   return (
-    <div className={`msg-line ${run ? 'marquee' : ''}`} ref={box} title={text}>
-      <span style={run ? { animationDuration: `${Math.max(5, text.length / 6)}s` } : undefined}>{text}</span>
+    <div className={`msg-line ${long ? 'long' : ''}`} ref={box} title={text}>
+      <span>{text}</span>
     </div>
   );
 }
@@ -578,16 +653,17 @@ function Board({
   pick,
   setPick,
   onNudge,
+  onBetTile,
 }: {
   s: GameState;
   spectating: boolean;
   pick: Pick | null;
   setPick: (p: Pick) => void;
   onNudge: () => void;
+  onBetTile: (tile: number) => void;
 }) {
   const r = s.round;
   const caps = useCaps(s);
-  const now = useNow(50, r?.phase === 'ended');
   const you = s.you && r && s.you.roundId === r.roundId ? s.you : null;
   const myTile = you && (you.state === 'alive' || you.state === 'betting') ? you.tileId : null;
   if (!r || !caps) return <div className="board" />;
@@ -600,19 +676,19 @@ function Board({
   // surviving tile stays, with the gold frame.
   const ended = r.phase === 'ended';
   const last = ended && s.revealed[0]?.roundId === r.roundId ? s.revealed[0] : null;
+  // CHANGES_9 A1: stages 1 and 2 keep their 9 / 10 standing tiles; only stage 3 ends with one tile.
   const tail = last?.stageTail ?? [];
-  const endedAt = last && r.phaseEndsAt !== null ? r.phaseEndsAt - (s.config?.resultsMs ?? 5_000) : null;
-  const tailGone = endedAt === null ? 0 : Math.min(Math.max(0, tail.length - 1), Math.floor((now - endedAt) / (s.config?.fastTickMs ?? 50)));
-  const standing = new Set(tail.slice(tailGone));
+  const standing = new Set(tail);
   const goneAt = (t: number) => (ended && tail.length ? !standing.has(t) : r.gone[t]);
-  const winner = ended && tail.length && standing.size === 1 ? tail[tail.length - 1] : -1;
-  const isWinner = (t: number) => t === winner;
+  const isWinner = (t: number) => ended && standing.has(t);
 
   const onTile = (t: number) => {
     // Not in the game (no bet, cashed out or lost): point at the bet section.
     if (!spectating && myTile === null && !canPick) return onNudge();
     if (goneAt(t)) return;
     if (canMove && t !== myTile) client.move(t);
+    // CHANGES_9 B3: tapping the framed tile again places the bet.
+    else if (canPick && pick?.tile === t) onBetTile(t);
     else if (canPick) setPick({ tile: t, random: false });
   };
 
@@ -650,11 +726,13 @@ function Board({
             onClick={() => onTile(t)}
             aria-disabled={gone}
             aria-label={`Tile ${t + 1}: ${gone ? 'gone' : band === 'full' ? `locked, ${count} players` : `${count} players`}${mine ? ', me' : pickedTile === t ? ', selected' : ''}${
-              isWinner(t) ? ', survived the stage' : ''
+              isWinner(t) ? ', survived the stage' : pickedTile === t ? ', tap again to bet' : ''
             }`}
           >
             {mine && <span className="you-badge">ME</span>}
+            {pickedTile === t && <span className="tag-bet">Bet</span>}
             <span className="tile-count">{gone ? '×' : count}</span>
+            {pickedTile === t && <span className="tag-now">Now</span>}
           </button>
         );
       })}
@@ -665,13 +743,15 @@ function Board({
 
 /** CHANGES_7 §5: the last loadingMs of the round-over pause cover the board (logo placeholder + progress). */
 function LoadingScreen({ s }: { s: GameState }) {
-  const now = useNow(50);
   const r = s.round;
-  const ms = s.config?.loadingMs ?? 5_000;
-  if (!r || r.phase !== 'ended' || !r.phaseEndsAt) return null;
-  const left = r.phaseEndsAt - now;
-  if (left > ms) return null;
-  const done = Math.min(1, Math.max(0, 1 - left / ms));
+  const now = useNow(50, r?.phase === 'betting');
+  const ms = s.config?.loadingMs ?? 3_000;
+  const betting = s.config?.bettingMs ?? 10_000;
+  if (!r || r.phase !== 'betting' || !r.phaseEndsAt) return null;
+  // CHANGES_9 F2: betting is already open under the loading screen.
+  const elapsed = betting - (r.phaseEndsAt - now);
+  if (elapsed >= ms) return null;
+  const done = Math.min(1, Math.max(0, elapsed / ms));
   return (
     <div className="loading" role="status" aria-label="Loading the next round">
       <div className="loading-logo">
@@ -813,12 +893,12 @@ function LiveBets({ s, sym }: { s: GameState; sym: string }) {
   const you = s.you && r && s.you.roundId === r.roundId && s.you.state !== 'idle' ? s.you : null;
   const myMask = s.session ? maskName(s.session.displayName) : '';
   const mine = { row: null as PublicBet | null };
-  const others = (f?.bets ?? []).filter((b) => {
+  const listed = (f?.bets ?? []).map((b) => {
     if (!mine.row && you && b.nickname === myMask && b.bet === you.bet && b.tile === you.tileId) {
       mine.row = b;
-      return false;
+      return { ...b, me: true };
     }
-    return true;
+    return { ...b, me: false };
   });
   const money = (v: number) => `${sym}${formatMoney(v)}`;
   // CHANGES_7 §2: tiles survived in the whole round; live players show the tiles gone so far.
@@ -834,6 +914,27 @@ function LiveBets({ s, sym }: { s: GameState; sym: string }) {
   // CHANGES_8 §5: x for everyone (cashed: cash-out x; live: current x; crashed: x they last stood at).
   const xCell = (b: { state: string; multiplier: number | null; crashMultiplier?: number | null }) =>
     b.state === 'cashedOut' ? b.multiplier : b.state === 'alive' ? liveX : b.state === 'lost' ? (b.crashMultiplier ?? null) : null;
+  // CHANGES_9 F1: my row sits in its normal sorted place; if the engine did not list it, insert it there.
+  const myName = s.session ? `${s.session.displayName} (Me)` : 'Me';
+  const rows = [...listed];
+  if (you && !mine.row) {
+    const meRow = {
+      nickname: myMask,
+      bet: you.bet,
+      tile: you.tileId ?? 0,
+      state: you.state,
+      multiplier: you.multiplier,
+      payout: you.payout,
+      survived: myTiles.current?.roundId === you.roundId ? myTiles.current.tiles : null,
+      crashMultiplier: myTiles.current?.roundId === you.roundId ? myTiles.current.crashX : null,
+      me: true,
+    };
+    const group = (st: string) => (st === 'alive' || st === 'betting' ? 0 : st === 'cashedOut' ? 1 : 2);
+    const key = (b: typeof meRow) => (b.state === 'cashedOut' ? (b.multiplier ?? 0) : b.bet);
+    let i = rows.findIndex((b) => group(b.state) > group(meRow.state) || (group(b.state) === group(meRow.state) && key(b) < key(meRow)));
+    if (i < 0) i = rows.length;
+    rows.splice(i, 0, meRow);
+  }
   const tilesCell = (b: { state: string; survived?: number | null }) =>
     b.state === 'cashedOut' || b.state === 'lost' ? (b.survived ?? '') : b.state === 'alive' && goneNow !== null ? goneNow : '';
   const row = (key: string | number, name: string, b: { bet: number; state: string; multiplier: number | null; payout: number; survived?: number | null; crashMultiplier?: number | null }, me = false) => (
@@ -850,6 +951,7 @@ function LiveBets({ s, sym }: { s: GameState; sym: string }) {
   );
   return (
     <div className="panel livebets">
+      <h2>Live bets</h2>
       <div className="lb-head">
         <div>
           <div className="lb-label">Bets</div>
@@ -881,8 +983,7 @@ function LiveBets({ s, sym }: { s: GameState; sym: string }) {
           </tr>
         </thead>
         <tbody>
-          {you && row('me', 'Me', { bet: you.bet, state: you.state, multiplier: you.multiplier, payout: you.payout, survived: mine.row?.survived ?? (myTiles.current?.roundId === you.roundId ? myTiles.current.tiles : null), crashMultiplier: mine.row?.crashMultiplier ?? (myTiles.current?.roundId === you.roundId ? myTiles.current.crashX : null) }, true)}
-          {others.map((b, i) => row(i, b.nickname, b))}
+          {rows.map((b, i) => row(b.me ? 'me' : i, b.me ? myName : b.nickname, b, b.me))}
           {f && f.moreBets > 0 && (
             <tr>
               <td colSpan={5} className="muted more">
@@ -931,15 +1032,16 @@ function RoundsPanel({ s, sym, top, onOpen }: { s: GameState; sym: string; top: 
   );
   return (
     <div className="panel rounds-panel">
+      <h2>History</h2>
+      <div className="rp-max">
+        All rounds: max <b className="gold">{formatMultiplier(TOP_MULTIPLIER)}</b> · Tiles <b>{STAGE_REMOVALS.reduce((a, b) => a + b, 0)}</b>
+      </div>
       <div className="rp-tabs" role="tablist">
         {TABS.map(([k, label]) => (
           <button key={k} role="tab" aria-selected={tab === k} className={`rp-tab ${tab === k ? 'on' : ''}`} onClick={() => setTab(k)}>
             {label}
           </button>
         ))}
-      </div>
-      <div className="rp-max">
-        Round max <b className="gold">{formatMultiplier(TOP_MULTIPLIER)}</b> · Tiles <b>{STAGE_REMOVALS.reduce((a, b) => a + b, 0)}</b>
       </div>
       <table className="rounds">
         <thead>

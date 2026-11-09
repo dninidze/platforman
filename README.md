@@ -9,7 +9,9 @@ three stages (named by `STAGE_NAMES`: **10x / 100x / 10kx**): the board is resur
 and anyone still standing on the last tile of the 10kx stage is paid **10,778x** (flat 3% house edge, capped at
 €10,000 per bet). Play money only.
 
-> **Current behaviour: `../spec/CHANGES_7.md` on top of `../spec/CHANGES_6.md`.** CHANGES_7: an emptied board finishes only its stage (survivors framed); live bets list live, then cashed out, then crashed, with tiles survived; Top man includes cash-outs; 5 s loading screen between rounds; bet steps 0.10 / 1 / 5 up to 100; "Cash out" button; compact header with a Dicador-style settings menu and dev panel; side sections behind toggles on narrow screens.
+> **Current behaviour: `../spec/CHANGES_9.md` and `CHANGES_8.md` on top of `CHANGES_7.md` and `CHANGES_6.md`.** CHANGES_9 (Zaal, 9 Nov): stages 1–2 keep 9/10 tiles when emptied; tap the framed tile again to bet; betting opens under the 3 s loading screen; fixed desktop page; "Live bets" / "History"; own row with full name "(Me)".
+>
+> CHANGES_7: CHANGES_7: an emptied board finishes only its stage (survivors framed); live bets list live, then cashed out, then crashed, with tiles survived; Top man includes cash-outs; 5 s loading screen between rounds; bet steps 0.10 / 1 / 5 up to 100; "Cash out" button; compact header with a Dicador-style settings menu and dev panel; side sections behind toggles on narrow screens.
 >
 > CHANGES_6 (still current where CHANGES_7 does not change it): It supersedes the older notes further down where they differ:
 > multipliers from `Platforman math 031126 ZI.xlsx` (0.98x … 10,778x, RTP 96.30–97.37% per cash-out point,

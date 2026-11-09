@@ -1763,3 +1763,124 @@ code {
 .betnow {
   font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
 }
+
+/* ======================================================================================
+   CHANGES_9
+   ====================================================================================== */
+/* B1 watermark a little higher */
+.betnow {
+  padding-bottom: 6%;
+}
+/* B2 small Bet / Now on the framed tile */
+.tag-bet,
+.tag-now {
+  position: absolute;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  font-size: clamp(0.42rem, 1.3vw, 0.6rem);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: #000;
+  z-index: 1;
+  pointer-events: none;
+}
+.tag-bet {
+  top: 12%;
+}
+.tag-now {
+  bottom: 12%;
+}
+/* C1 long lines start at the left edge and are moved by script */
+.msg-line.long {
+  text-align: left;
+}
+.msg-line span {
+  will-change: transform;
+}
+/* C3 the message box lights yellow */
+.msgbox.nudge-0 {
+  animation: nudge-a 1.2s ease-out;
+}
+.msgbox.nudge-1 {
+  animation: nudge-b 1.2s ease-out;
+}
+/* D2 opaque loading screen */
+.loading {
+  background: var(--bg);
+  z-index: 6;
+}
+/* F1 no special styling for my row */
+.lbtable tr.me td:first-child {
+  box-shadow: none;
+}
+/* G1 / G2 history table */
+.rounds th {
+  font-weight: 700;
+  color: var(--text);
+}
+.rounds td .link,
+.rounds td > span {
+  display: inline-block;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  font: inherit;
+  line-height: inherit;
+  text-align: left;
+  vertical-align: top;
+}
+.rp-max {
+  margin: -4px 0 8px;
+}
+/* I1 a wider amount box */
+.amount-group {
+  grid-template-columns: minmax(32px, 1fr) minmax(64px, 1.6fr) minmax(32px, 1fr);
+}
+.betbox .amount-row {
+  grid-template-columns: minmax(0, 1fr) repeat(4, 25px);
+  gap: 3px;
+}
+/* E1 desktop: the page does not scroll; side sections are as tall as the game column and scroll inside */
+@media (min-width: 1100px) {
+  :root {
+    --grid-w: min(580px, calc(100vh - 44px - 8px - 10px - 100px - 24px));
+  }
+  html,
+  body {
+    height: 100%;
+    overflow: hidden;
+  }
+  .app {
+    height: 100vh;
+    padding-bottom: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .layout {
+    align-items: stretch;
+    min-height: 0;
+  }
+  .left-col,
+  .right-col {
+    height: 0;
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+  .left-col > .panel,
+  .right-col > .panel {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+}
+/* J1 narrow screens: fixed until a side section is opened */
+html.locked,
+html.locked body {
+  overflow: hidden;
+  height: 100%;
+  overscroll-behavior: none;
+}
