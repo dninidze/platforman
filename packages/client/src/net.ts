@@ -106,6 +106,8 @@ export interface GameState {
   revealed: Revealed[];
   lastGone: { tile: number; key: number } | null;
   lostAt: number | null;
+  /** CHANGES_10 C1: when this player cashed out (client time). */
+  cashedAt: number | null;
   toasts: Toast[];
   /** CHANGES_9 B5: a rejected action, shown on message line 1 for 3 s (client time). */
   notice: { text: string; at: number } | null;
@@ -157,6 +159,7 @@ const initial: GameState = {
   revealed: [],
   lastGone: null,
   lostAt: null,
+  cashedAt: null,
   toasts: [],
   notice: null,
   offset: 0,
@@ -282,6 +285,12 @@ export class GameClient {
   }
   spectate(roomId: string) {
     this.send({ t: 'spectate', roomId, rid: ++this.rid });
+  }
+
+  /** CHANGES_10 F5: back from a hidden tab: ask for a fresh snapshot of the live round at once. */
+  resyncNow() {
+    this.send({ t: 'resync' });
+    this.set({ resyncs: this.state.resyncs + 1, lastGone: null });
   }
 
   /** CHANGES_9 B5: game-action messages go to the message box, not over the screen. */
@@ -449,7 +458,7 @@ export class GameClient {
         return;
       case 'you': {
         const prev = s.you;
-        this.set({ you: m, balance: m.balance });
+        this.set({ you: m, balance: m.balance, ...(m.state === 'cashedOut' && prev?.state !== 'cashedOut' ? { cashedAt: Date.now() } : {}) });
         this.persistBalance(m.balance);
         if (m.maxWin && prev?.state !== 'cashedOut') this.toast('Max win reached', 'win');
         if (m.state === 'cashedOut' && prev?.state === 'alive' && !m.maxWin && m.multiplier && m.multiplier >= 10_000) {

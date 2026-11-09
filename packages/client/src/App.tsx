@@ -25,6 +25,7 @@ import { FairnessModal } from './Fairness';
 import { GameClient, store, type GameState } from './net';
 import { SettingsPanel, StressOverlay } from './Stress';
 import { AMOUNT_RE, formatAmount, stepBet } from './betSteps';
+import { sound } from './sound';
 import { TopResults, type TopSort, type TopWindow } from './topResults';
 import { InProcessTransport, WebSocketTransport, WorkerTransport, type Transport } from './transport';
 
@@ -174,6 +175,25 @@ export function App() {
     const reach = you.state === 'cashedOut' ? (you.multiplier ?? 0) : you.state === 'lost' ? lastAliveX.current : r.multiplier;
     myBets.record({ roundId: you.roundId, bet: you.bet, state: you.state, multiplier: you.multiplier, payout: you.payout, reach });
   }, [you, r?.phase, r?.roundId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // CHANGES_10 G1: one click for every player action (bet / cash-out play their own tone); F5: resync on return.
+  useEffect(() => {
+    const onDown = () => sound.unlock();
+    const onClick = (e: MouseEvent) => {
+      const b = (e.target as Element | null)?.closest?.('button');
+      if (b && !b.classList.contains('mainbtn') && !b.disabled) sound.click();
+    };
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') client.resyncNow();
+    };
+    document.addEventListener('pointerdown', onDown, true);
+    document.addEventListener('click', onClick);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      document.removeEventListener('pointerdown', onDown, true);
+      document.removeEventListener('click', onClick);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, []);
   // CHANGES_9 J1: on narrow screens the page is fixed until a side section is opened; scrolling back to the top closes it.
   useEffect(() => {
     const narrow = () => window.matchMedia('(max-width: 1099px)').matches;
@@ -185,7 +205,8 @@ export function App() {
       else if (away && window.scrollY <= 0) setSide(null);
     };
     window.addEventListener('scroll', onScroll, { passive: true });
-    if (narrow()) requestAnimationFrame(() => document.querySelector(side === 'bets' ? '.left-col' : '.right-col')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    // CHANGES_10 F1: scroll only until the multiplier section is at the top of the screen.
+    if (narrow()) requestAnimationFrame(() => document.querySelector('.under')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
     return () => window.removeEventListener('scroll', onScroll);
   }, [side]);
   // When betting opens: pick a random tile, and place a queued bet on it.
@@ -242,7 +263,10 @@ export function App() {
             onBetTile={(t) => {
               const minor = Math.round(Number(amount) * 100);
               const cfg = s.config;
-              if (cfg && Number.isFinite(minor) && minor >= cfg.minBet && minor <= cfg.maxBet) client.bet(minor, t);
+              if (cfg && Number.isFinite(minor) && minor >= cfg.minBet && minor <= cfg.maxBet) {
+                sound.bet(true);
+                client.bet(minor, t);
+              }
               else client.notify('Enter a valid bet amount');
             }}
           />
@@ -266,6 +290,17 @@ export function App() {
           <RoundsPanel s={s} sym={sym} top={topResults} onOpen={setDetailsFor} />
         </aside>
       </main>
+      {side !== null && (
+        <button
+          className="back-top"
+          onClick={() => {
+            window.scrollTo(0, 0);
+            setSide(null);
+          }}
+        >
+          Back to top ^
+        </button>
+      )}
 
       <div className="toasts" role="status" aria-live="assertive">
         {s.toasts.map((t) => (
@@ -394,10 +429,31 @@ function SettingsMenu({
           {item('Game limits', () => onPage('limits'))}
           {item('Provably fair', onFair)}
           {item('My bets', () => onPage('myBets'))}
+          <SoundSwitch />
           {item('Dev panel', onDev)}
         </div>
       )}
     </div>
+  );
+}
+
+function SoundSwitch() {
+  const [on, setOn] = useState(sound.on);
+  return (
+    <button
+      role="menuitemcheckbox"
+      aria-checked={on}
+      className="menu-item menu-switch"
+      onClick={() => {
+        sound.on = !on;
+        setOn(!on);
+      }}
+    >
+      <span>Sound</span>
+      <span className={`switch ${on ? 'on' : ''}`} aria-hidden>
+        <span className="knob" />
+      </span>
+    </button>
   );
 }
 
@@ -522,7 +578,8 @@ function useCaps(s: GameState): TileCaps | null {
   if (!r) return null;
   if (r.phase === 'betting' && s.config) {
     const bets = r.counts.reduce((a, b) => a + b, 0);
-    return tileCapsFor(bets, s.config.tileCapPct, s.config.tileYellowPct, true);
+    // CHANGES_10 D1: no red while betting (the number of players isn't known yet).
+    return { ...tileCapsFor(bets, s.config.tileCapPct, s.config.tileYellowPct, true), tileCap: Number.POSITIVE_INFINITY };
   }
   return r.caps;
 }
@@ -536,13 +593,15 @@ function tilesGoneInRound(r: NonNullable<GameState['round']>): number {
 /** Message line 2 (CHANGES_7 §6): only countdowns and the tile count. */
 function gameLine(s: GameState, now: number): string {
   const r = s.round!;
-  const secs = r.phaseEndsAt ? Math.max(0, (r.phaseEndsAt - now) / 1000).toFixed(1) : '0.0';
+  // CHANGES_10 C3: whole seconds, rounded up.
+  const secs = r.phaseEndsAt ? Math.max(0, Math.ceil((r.phaseEndsAt - now) / 1000)) : 0;
   if (r.phase === 'betting') return `Betting closes in ${secs} s`;
   if (r.phase === 'intermission') return `${stageName(r.stage + 1)} starts in ${secs} s`;
   if (r.phase === 'ended') return `Next round in ${secs} s`;
   // CHANGES_9 D1: counts up, per stage.
   const len = STAGE_REMOVALS[r.stage - 1];
-  return `Tiles ${r.removed}/${len}`;
+  // CHANGES_10 C2: fixed-width digits (figure spaces pad the count).
+  return `Tiles ${String(r.removed).padStart(String(len).length, '\u2007')} / ${len}`;
 }
 
 /** Message line 1 (CHANGES_7 §6): the player's messages, else game events (resurrection, round result). */
@@ -557,7 +616,7 @@ function playerLine(s: GameState, now: number, pick: Pick | null, queued: number
     if (r.phase === 'intermission') return { text: `You survived ${stageName(r.stage)}! Move or cash out`, kind: 'win' };
     return { text: "You're in the game", kind: 'me' };
   }
-  if (you?.state === 'cashedOut') return { text: `Cashed out ${formatMultiplier(you.multiplier ?? 0)} · ${formatMoney(you.payout)} ${cur}`, kind: 'win' };
+  if (you?.state === 'cashedOut' && s.cashedAt !== null && Date.now() - s.cashedAt < 5_000) return { text: `Cashed out ${formatMultiplier(you.multiplier ?? 0)} · ${formatMoney(you.payout)} ${cur}`, kind: 'win' };
   // CHANGES_8 §7: "Your tile is gone" for 5 s, then the bet prompt again.
   if (you?.state === 'lost' && s.lostAt !== null && now - (s.lostAt + s.offset) < 5000) return { text: 'Your tile is gone', kind: 'loss' };
   if (queued !== null) return { text: 'Your bet goes on a random tile next round', kind: 'me' };
@@ -602,13 +661,26 @@ function MultiplierSection({ s, pick, queued, nudge }: { s: GameState; pick: Pic
         ))}
       </div>
       <div className="mult" aria-live="polite" aria-atomic="true">
-        {formatMultiplier(notStarted ? 0 : r.multiplier)}
+        <MultDigits text={formatMultiplier(notStarted ? 0 : r.multiplier)} />
       </div>
       <div className={`msgbox ${nudge ? `nudge-${nudge % 2}` : ''}`} role="status" aria-live="polite">
         <Marquee text={top.text} />
         <Marquee text={game} />
       </div>
     </div>
+  );
+}
+
+/** CHANGES_10 F4: the "." sits in the middle of the box; whole numbers (100x and up) are centred. */
+function MultDigits({ text }: { text: string }) {
+  const i = text.indexOf('.');
+  if (i < 0) return <span className="m-whole">{text}</span>;
+  return (
+    <>
+      <span className="m-int">{text.slice(0, i)}</span>
+      <span className="m-dot">.</span>
+      <span className="m-frac">{text.slice(i + 1)}</span>
+    </>
   );
 }
 
@@ -841,17 +913,33 @@ function BetSection({
 
   let main: { text: string; color: 'green' | 'yellow' | 'red'; onClick: () => void; disabled?: boolean; fading?: boolean };
   if (r.phase === 'betting' && you?.state === 'betting') {
-    main = { text: `Cancel bet ${formatMoney(you.bet)} ${cur}`, color: 'red', onClick: () => client.cancelBet() };
+    main = { text: `Cancel bet ${formatMoney(you.bet)} ${cur}`, color: 'red', onClick: () => {
+        sound.click();
+        client.cancelBet();
+      } };
   } else if (r.phase === 'betting') {
-    main = { text: `Bet ${formatMoney(valid ? minor : 0)} ${cur}`, color: 'green', disabled: !pick || !valid, onClick: () => pick && client.bet(minor, pick.tile) };
+    main = { text: `Bet ${formatMoney(valid ? minor : 0)} ${cur}`, color: 'green', disabled: !pick || !valid, onClick: () => {
+        if (!pick) return;
+        sound.bet();
+        client.bet(minor, pick.tile);
+      } };
   } else if (you?.state === 'alive') {
     const open = r.phase === 'intermission' || (r.phase === 'running' && !(r.stage === 1 && r.removed === 0));
-    main = { text: `Cash out ${formatMoney(potential)} ${cur}`, color: 'yellow', disabled: !open, onClick: () => client.cashout() };
+    main = { text: `Cash out ${formatMoney(potential)} ${cur}`, color: 'yellow', disabled: !open, onClick: () => {
+        sound.cashout();
+        client.cashout();
+      } };
   } else if (queued !== null) {
-    main = { text: `Cancel bet ${formatMoney(queued)} ${cur}`, color: 'red', onClick: () => setQueued(null) };
+    main = { text: `Cancel bet ${formatMoney(queued)} ${cur}`, color: 'red', onClick: () => {
+        sound.click();
+        setQueued(null);
+      } };
   } else {
     const fading = closedAt !== null && now - closedAt < 3_000 && r.phase === 'running' && (!you || you.state === 'idle');
-    main = { text: `Bet ${formatMoney(valid ? minor : 0)} ${cur}`, color: 'green', disabled: !valid || fading, fading, onClick: () => setQueued(minor) };
+    main = { text: `Bet ${formatMoney(valid ? minor : 0)} ${cur}`, color: 'green', disabled: !valid || fading, fading, onClick: () => {
+        sound.bet();
+        setQueued(minor);
+      } };
   }
 
   return (
@@ -972,6 +1060,7 @@ function LiveBets({ s, sym }: { s: GameState; sym: string }) {
           );
         })()}
       </div>
+      <div className="tablewrap">
       <table className="lbtable">
         <thead>
           <tr>
@@ -984,13 +1073,6 @@ function LiveBets({ s, sym }: { s: GameState; sym: string }) {
         </thead>
         <tbody>
           {rows.map((b, i) => row(b.me ? 'me' : i, b.me ? myName : b.nickname, b, b.me))}
-          {f && f.moreBets > 0 && (
-            <tr>
-              <td colSpan={5} className="muted more">
-                + {f.moreBets.toLocaleString()} more
-              </td>
-            </tr>
-          )}
           {(!f || f.bets.length === 0) && !you && (
             <tr>
               <td colSpan={5} className="muted">
@@ -1000,6 +1082,7 @@ function LiveBets({ s, sym }: { s: GameState; sym: string }) {
           )}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
@@ -1034,7 +1117,7 @@ function RoundsPanel({ s, sym, top, onOpen }: { s: GameState; sym: string; top: 
     <div className="panel rounds-panel">
       <h2>History</h2>
       <div className="rp-max">
-        All rounds: max <b className="gold">{formatMultiplier(TOP_MULTIPLIER)}</b> · Tiles <b>{STAGE_REMOVALS.reduce((a, b) => a + b, 0)}</b>
+        <b>All rounds:</b> max <b className="gold">{formatMultiplier(TOP_MULTIPLIER)}</b> · Tiles <b>{STAGE_REMOVALS.reduce((a, b) => a + b, 0)}</b>
       </div>
       <div className="rp-tabs" role="tablist">
         {TABS.map(([k, label]) => (
@@ -1043,10 +1126,14 @@ function RoundsPanel({ s, sym, top, onOpen }: { s: GameState; sym: string; top: 
           </button>
         ))}
       </div>
+      <div className="tablewrap">
       <table className="rounds">
         <thead>
           <tr>
-            <th scope="col">Round</th>
+            <th scope="col">
+              Round
+              {isTop && <div className="sortrow">{sortBtn('reach', 'Reach')}</div>}
+            </th>
             <th scope="col">
               Top man
               {isTop && <div className="sortrow">{sortBtn('man', 'x')}</div>}
@@ -1114,6 +1201,7 @@ function RoundsPanel({ s, sym, top, onOpen }: { s: GameState; sym: string; top: 
           )}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

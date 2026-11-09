@@ -9,7 +9,7 @@ import type { RoundHighlights } from '@p3/shared';
  */
 
 export type TopWindow = '24h' | 'week' | 'month' | 'year';
-export type TopSort = 'man' | 'cashX' | 'cashWin';
+export type TopSort = 'man' | 'cashX' | 'cashWin' | 'reach';
 
 export interface TopEntry {
   /** Round id as shown (round ids restart when the page reloads, so `t` disambiguates). */
@@ -36,6 +36,8 @@ const keyValue: Record<TopSort, (e: TopEntry) => number> = {
   man: (e) => e.highlights.topMan?.multiplier ?? -1,
   cashX: (e) => e.highlights.topCashout?.multiplier ?? -1,
   cashWin: (e) => e.highlights.topCashout?.amount ?? -1,
+  /** CHANGES_10 B2: by the stage the round reached; ties go to the newest round. */
+  reach: (e) => e.reached,
 };
 
 /** Keep the union of the bucket's top N by every sort key. */

@@ -71,6 +71,8 @@ log(`betting open for round #${roundId}`);
 const auto = await b.evaluate(`({ text: ${mainBtn}.textContent, cls: ${mainBtn}.className, line1: ${line1}, frame: getComputedStyle(document.querySelector('.msgbox')).borderTopStyle, tags: [...document.querySelectorAll('.tile.picked .tag-bet, .tile.picked .tag-now')].map((t) => t.textContent).join('/'), picked: [...document.querySelectorAll('.tile.picked')].map((t) => t.getAttribute('aria-label')) })`);
 check('betting opens with a random tile picked: green "Bet 1.00 EUR", "Bet random or choose tile" on line 1', /^Bet \d+\.\d\d [A-Z]{3}$/.test(auto.text) && auto.cls.includes('mb-green') && auto.picked.length === 1 && /selected/.test(auto.picked[0]) && auto.line1 === 'Bet random or choose tile', `${auto.text} / ${auto.line1} / ${auto.picked[0]}`);
 check('BET NOW watermark over the board while betting, tiles still clickable', await b.evaluate(`(() => { const w = document.querySelector('.betnow'); return !!w && w.textContent === 'BETNOW' && getComputedStyle(w).pointerEvents === 'none'; })()`));
+check('no red tiles while betting is open (CHANGES_10 D1)', await b.evaluate(`!document.querySelector('.board .tile.band-full')`));
+check('Live bets and History: header rows stay put (sticky) above a scrolling list', await b.evaluate(`['.lbtable', '.rounds'].every((t) => getComputedStyle(document.querySelector(t + ' thead th')).position === 'sticky' && document.querySelector(t).parentElement.classList.contains('tablewrap'))`));
 check('message box has a frame and two lines', auto.frame === 'solid' && (await b.evaluate(`document.querySelectorAll('.msgbox .msg-line').length`)) === 2);
 const amountBox = await b.evaluate(`({ group: [...(document.querySelector('.amount-group')?.children ?? [])].map((c) => c.tagName + ':' + (c.tagName === 'INPUT' ? c.value : c.textContent).trim()), weight: getComputedStyle(document.querySelector('.amount-group .amount')).fontWeight, cur: !!document.querySelector('.betbox .cur') })`);
 check('amount box: − amount + joined, number only (semibold), no currency', amountBox.group.length === 3 && /^BUTTON:−$/.test(amountBox.group[0]) && /^INPUT:\d+\.\d\d$/.test(amountBox.group[1]) && /^BUTTON:\+$/.test(amountBox.group[2]) && amountBox.weight === '600' && !amountBox.cur, `${amountBox.group.join(' ')} / ${amountBox.weight}`);
@@ -83,8 +85,8 @@ await b.waitFor(`/^Cancel bet \\d+\\.\\d\\d [A-Z]{3}$/.test(${mainBtn}.textConte
 const frame = await b.evaluate(`({ cls: document.querySelector('.tile.mine')?.className, badge: document.querySelector('.tile.mine .you-badge')?.textContent })`);
 check('second tap on the framed tile bets: red "Cancel bet …", own tile framed bronze and labelled ME', /metal-bronze/.test(frame.cls ?? '') && frame.badge === 'ME', `${frame.cls} / ${frame.badge}`);
 check('BET NOW watermark disappears once the bet is placed', await b.evaluate(`!document.querySelector('.betnow')`));
-await b.waitFor(`/^Tiles \\d+\\/\\d+$/.test(${line2})`, 15_000, 'running');
-check('tile counter counts up: "Tiles n/91"', /^Tiles \d+\/91$/.test(await b.evaluate(line2)), await b.evaluate(line2));
+await b.waitFor(`/^Tiles\\s+\\d+ \\/ \\d+$/.test(${line2})`, 15_000, 'running');
+check('tile counter counts up: "Tiles n / 91" (fixed-width digits)', /^Tiles\s+\d+ \/ 91$/.test(await b.evaluate(line2)), await b.evaluate(line2));
 await b.waitFor(`(() => { const x = ${mainBtn}; if (/^Cash out \\d/.test(x.textContent) && !x.disabled) { window.__cashText = x.textContent; window.__cashCls = x.className; x.click(); return true; } return /^Bet /.test(x.textContent); })()`, 15_000, 'cashout or loss');
 await sleep(800);
 const cash = await b.evaluate(`({ text: window.__cashText ?? null, cls: window.__cashCls ?? null, after: ${mainBtn}.textContent, line1: ${line1}, me: [...(document.querySelector('.lbtable tr.me')?.children ?? [])].map((td) => td.textContent) })`);
@@ -162,7 +164,7 @@ await open(url);
 await b.evaluate(`[...document.querySelectorAll('.rp-tab')].find((t) => t.textContent === '24h').click(), true`);
 await sleep(300);
 const topView = await b.evaluate(`({ heads: [...document.querySelectorAll('.rounds th')].map((th) => th.textContent), sorts: [...document.querySelectorAll('.sortbtn')].map((x) => x.textContent.replace('▼', '').trim()+ (x.classList.contains('on') ? '*' : '')), rows: [...document.querySelectorAll('.rounds tbody tr')].map((tr) => tr.textContent) })`);
-check('Top 24h keeps the rounds after a reload; default sort Top man x; x | Win switch on Top cashout', topView.rows.length >= 1 && !/No rounds/.test(topView.rows[0]) && topView.sorts.join(',') === 'x*,x,Win', `${topView.rows.length} rows / ${topView.sorts.join(',')}`);
+check('Top 24h keeps the rounds after a reload; default sort Top man x; x | Win switch on Top cashout', topView.rows.length >= 1 && !/No rounds/.test(topView.rows[0]) && topView.sorts.join(',') === 'Reach,x*,x,Win', `${topView.rows.length} rows / ${topView.sorts.join(',')}`);
 
 check('no network requests', external.length === 0, external.join(' '));
 check('no console errors', b.consoleErrors.length === 0, b.consoleErrors.slice(0, 3).join(' | '));
