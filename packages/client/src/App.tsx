@@ -26,6 +26,7 @@ import { GameClient, store, type GameState } from './net';
 import { SettingsPanel, StressOverlay } from './Stress';
 import { AMOUNT_RE, formatAmount, stepBet } from './betSteps';
 import { sound } from './sound';
+import { MUSIC_TRACKS, music, type MusicTrack } from './music';
 import { TopResults, type TopSort, type TopWindow } from './topResults';
 import { InProcessTransport, WebSocketTransport, WorkerTransport, type Transport } from './transport';
 
@@ -177,7 +178,12 @@ export function App() {
   }, [you, r?.phase, r?.roundId]); // eslint-disable-line react-hooks/exhaustive-deps
   // CHANGES_10 G1: one click for every player action (bet / cash-out play their own tone); F5: resync on return.
   useEffect(() => {
-    const onDown = () => sound.unlock();
+    const onDown = () => {
+      sound.unlock();
+      // G3: resume saved music after the first interaction (autoplay rules).
+      const pref = musicPref.get();
+      if (pref && !music.playing && sound.context) music.start(sound.context, pref);
+    };
     const onClick = (e: MouseEvent) => {
       const b = (e.target as Element | null)?.closest?.('button');
       if (b && !b.classList.contains('mainbtn') && !b.disabled) sound.click();
@@ -430,9 +436,69 @@ function SettingsMenu({
           {item('Provably fair', onFair)}
           {item('My bets', () => onPage('myBets'))}
           <SoundSwitch />
+          <MusicControl />
           {item('Dev panel', onDev)}
         </div>
       )}
+    </div>
+  );
+}
+
+/** CHANGES_10 G3: background music, off until the player turns it on; choice remembered. */
+const musicPref = {
+  get(): MusicTrack | null {
+    try {
+      const v = localStorage.getItem('p3.music');
+      return v === 'a' || v === 'b' || v === 'c' ? v : null;
+    } catch {
+      return null;
+    }
+  },
+  set(v: MusicTrack | null) {
+    try {
+      localStorage.setItem('p3.music', v ?? 'off');
+    } catch {
+      /* storage blocked */
+    }
+  },
+};
+let musicTrack: MusicTrack = musicPref.get() ?? 'a';
+
+function MusicControl() {
+  const [on, setOn] = useState(music.playing || musicPref.get() !== null);
+  const [track, setTrack] = useState<MusicTrack>(musicTrack);
+  const toggle = () => {
+    if (on) {
+      music.stop();
+      musicPref.set(null);
+    } else {
+      sound.unlock();
+      if (sound.context) music.start(sound.context, track);
+      musicPref.set(track);
+    }
+    setOn(!on);
+  };
+  const pick = (t: MusicTrack) => {
+    musicTrack = t;
+    setTrack(t);
+    music.setTrack(t);
+    if (on) musicPref.set(t);
+  };
+  return (
+    <div className="music-ctl">
+      <button role="menuitemcheckbox" aria-checked={on} className="menu-item menu-switch" onClick={toggle}>
+        <span>Music</span>
+        <span className={`switch ${on ? 'on' : ''}`} aria-hidden>
+          <span className="knob" />
+        </span>
+      </button>
+      <div className="music-tracks" role="radiogroup" aria-label="Music track">
+        {MUSIC_TRACKS.map((t) => (
+          <button key={t.id} role="radio" aria-checked={track === t.id} className={`music-track ${track === t.id ? 'on' : ''}`} onClick={() => pick(t.id)}>
+            {t.name}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

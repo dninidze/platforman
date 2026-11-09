@@ -38,6 +38,10 @@ export const sound = {
       ctx = null;
     }
   },
+  /** The shared AudioContext (null until the first interaction). */
+  get context(): AudioContext | null {
+    return ctx;
+  },
   /** One short click for every player action. */
   click() {
     if (skipClick) {

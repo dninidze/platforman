@@ -2051,3 +2051,24 @@ html.locked body {
 .betnow span {
   transform: translateY(-57%);
 }
+
+/* G3 music picker in the settings menu */
+.music-tracks {
+  display: flex;
+  gap: 4px;
+  padding: 0 8px 6px;
+}
+.music-track {
+  flex: 1;
+  font-size: 0.68rem;
+  padding: 4px 2px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+}
+.music-track.on {
+  border-color: #6b6f76;
+  background: var(--panel-2);
+  color: var(--text);
+}
