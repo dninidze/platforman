@@ -400,7 +400,7 @@ describe('tile capacity (CHANGES_4 §3)', () => {
 });
 
 describe('public players list', () => {
-  it('lists at most 50 bets with masked names, live bets first by size, and counts the rest', async () => {
+  it('lists every bet with masked names, live bets first by size (CHANGES_10 A1)', async () => {
     const h = setupRoom();
     const ids = Array.from({ length: 80 }, (_, i) => `player${i}`);
     h.join(...ids);
@@ -408,11 +408,13 @@ describe('public players list', () => {
     h.clock.advanceTo(BET_END + 500);
     h.room.cashout('player3');
     const feed = h.room.liveFeed();
-    expect(feed.bets).toHaveLength(50);
-    expect(feed.moreBets).toBe(30);
+    expect(feed.bets).toHaveLength(80);
+    expect(feed.moreBets).toBe(0);
     expect(feed.bets[0]).toMatchObject({ state: 'alive', bet: 89, survived: null });
-    expect(feed.bets.every((b) => b.state === 'alive')).toBe(true);
-    expect(feed.bets.map((b) => b.bet)).toEqual([...feed.bets.map((b) => b.bet)].sort((x, y) => y - x));
+    const alive = feed.bets.filter((b) => b.state === 'alive');
+    expect(alive).toHaveLength(79);
+    expect(alive.map((b) => b.bet)).toEqual([...alive.map((b) => b.bet)].sort((x, y) => y - x));
+    expect(feed.bets[79]).toMatchObject({ state: 'cashedOut', bet: 13 });
     expect(feed.stats).toMatchObject({ inRoom: 80, staked: ids.reduce((a, _, i) => a + 10 + i, 0), paid: 12, biggestWin: 12, biggestMultiplier: 0.98 });
     for (const b of feed.bets) expect(b.nickname).toMatch(/^pl\*\*\*\d$/);
   });
@@ -443,15 +445,16 @@ describe('live bets order and tiles survived (CHANGES_7 §2)', () => {
 });
 
 describe('colour rule (CHANGES_6 §4) and round highlights', () => {
-  it('default: green at 0, yellow from 1 player, red/locked at round(3% of bets), half up', () => {
+  it('default (CHANGES_10 D2): green at 0, yellow from 1 player, red/locked at round(2% of bets), half up', () => {
     const caps = (n: number) => tileCapsFor(n, DEFAULT_CONFIG.tileCapPct, DEFAULT_CONFIG.tileYellowPct, false);
-    expect(caps(100)).toMatchObject({ tileCap: 3, yellowFrom: 1 }); // locks at 3, not 4
-    expect(caps(150)).toMatchObject({ tileCap: 5 }); // 4.5 rounds up
-    expect(caps(301)).toMatchObject({ tileCap: 9 }); // 9.03
-    expect(caps(1_000)).toMatchObject({ tileCap: 30 });
+    expect(caps(100)).toMatchObject({ tileCap: 2, yellowFrom: 1 }); // locks at 2
+    expect(caps(300)).toMatchObject({ tileCap: 6 });
+    expect(caps(125)).toMatchObject({ tileCap: 3 }); // 2.5 rounds up
+    expect(caps(30)).toMatchObject({ tileCap: 1 }); // 0.6 rounds up to 1
+    expect(caps(1_000)).toMatchObject({ tileCap: 20 });
     expect(caps(10)).toMatchObject({ tileCap: 1 }); // never below 1
     const c = caps(100);
-    expect([0, 1, 2, 3, 40].map((n) => tileBand(n, false, c))).toEqual(['green', 'yellow', 'yellow', 'full', 'full']);
+    expect([0, 1, 2, 3, 40].map((n) => tileBand(n, false, c))).toEqual(['green', 'yellow', 'full', 'full', 'full']);
   });
 
   it('with 100 bets a tile locks at its 3rd player from round start', async () => {

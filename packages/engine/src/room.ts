@@ -72,8 +72,8 @@ export interface RoomDeps {
 }
 
 const CREDIT_RETRY_MS = [100, 500, 2_000, 5_000, 10_000];
-/** Rows in the public players list. */
-const LIST_LIMIT = 50;
+/** Rows in the public players list: CHANGES_10 A1 lists every bet (one room, at most ~1,000 players). */
+const LIST_LIMIT = 5_000;
 
 /** The `n` largest by `key`, without sorting the whole group. */
 function topBy<T>(items: T[], key: (x: T) => number, n: number): T[] {
@@ -645,7 +645,7 @@ export class Room {
         gone.push(p);
       }
     }
-    // Public list: at most LIST_LIMIT rows, masked names (BUILD_SPEC §8: never list every bet).
+    // Public list, masked names. CHANGES_10 A1: every bet is listed (LIST_LIMIT only guards against abuse).
     const listed: RoundPlayer[] = [];
     for (const [group, key] of [
       [live, (p: RoundPlayer) => p.bet],

@@ -62,7 +62,7 @@ export const DEFAULT_CONFIG: GameConfig = {
   loadingMs: 3_000,
   moveLockMs: 0,
   tileCapacity: 0,
-  tileCapPct: 3,
+  tileCapPct: 2, // CHANGES_10 D2
   tileYellowPct: 0,
   roomSoftCap: 2_000,
   minBet: 10,

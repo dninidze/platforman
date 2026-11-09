@@ -1,3 +1,4 @@
+import { DEFAULT_CONFIG } from '@p3/shared';
 import { DISPLAY_NAME_RE, FakeClock, countsChecksum, decodeGoneMask, type ServerMessage } from '@p3/shared';
 import { describe, expect, it } from 'vitest';
 import { LocalHost } from '../src/host';
@@ -77,7 +78,7 @@ describe('LocalHost (in-page engine)', () => {
     // Thresholds froze at round start from the bets on the board.
     const frozen = a.of('roundState').find((m) => m.phase === 'running')!.caps;
     expect(frozen.live).toBe(false);
-    expect(frozen.tileCap).toBe(Math.round((frozen.playerBase * 3) / 100)); // CHANGES_6: lock at 3% of bets
+    expect(frozen.tileCap).toBe(Math.max(1, Math.round((frozen.playerBase * DEFAULT_CONFIG.tileCapPct) / 100))); // CHANGES_10: lock at 2% of bets
     expect(frozen.yellowFrom).toBe(1);
     expect(frozen.playerBase).toBeGreaterThan(900);
     const feed = a.of('liveFeed').at(-1)!;
