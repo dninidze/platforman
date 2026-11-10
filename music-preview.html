@@ -26,7 +26,7 @@
 <body>
 <main>
   <h1>Platforman background music</h1>
-  <p>Three original loops, synthesized live (Web Audio, no files). 120 BPM (in the game the beat is locked to the tiles: one tile per beat), 16-bar cycle with a filter sweep and fill. Glasshouse is the game default. Phones and tablets play a lighter mix (no pad layer, no echo); add <code>?lite=1</code> to this page's address to hear it here. In-game level is fixed low; the boost below is for auditioning only.</p>
+  <p>Three original loops, synthesized live (Web Audio, no files). 120 BPM, 16-bar cycle with a filter sweep and fill. Glasshouse is the game default. Phones and tablets play a lighter mix (no pad layer, no echo); add <code>?lite=1</code> to this page's address to hear it here. In-game level is fixed low; the boost below is for auditioning only.</p>
   <div id="list"></div>
   <label>Preview boost <input id="vol" type="range" min="1" max="6" step="0.1" value="3"></label>
 </main>
@@ -44,7 +44,6 @@ const TRACKS = {
   // Warm swung chord stabs in D minor over a round bass, soft pad underneath.
   a: {
     bpm: 120,
-    // one beat per tile (tiles go every 0.5 s)
     swing: 0.14,
     kick: "x...x...x...x...",
     hat: "..o...o...o...o.",
@@ -87,7 +86,6 @@ const TRACKS = {
   // Darker C minor: rolling 16th saw bass, rimshots, a sparse resonant stab and a low pad.
   b: {
     bpm: 120,
-    // one beat per tile (tiles go every 0.5 s)
     swing: 0.08,
     kick: "x...x...x...x...",
     hat: "..c...c...c...c...c...c...c.c.o.",
@@ -130,7 +128,6 @@ const TRACKS = {
   // Light E major / C# minor: dotted pluck arpeggio with echo, soft sine sub, airy pad.
   c: {
     bpm: 120,
-    // one beat per tile (tiles go every 0.5 s)
     swing: 0.12,
     kick: "x...x...x...x...",
     hat: "..c...c...c...c...c..cc...c...o.",
@@ -471,7 +468,6 @@ function teardown() {
     for (const n of b.nodes) n.disconnect();
   }, 700);
 }
-let lastBeatError = null;
 const music = {
   /** Start (or switch to) a track on the caller's AudioContext; fades in over 1 s. */
   start(ctx, track) {
@@ -508,27 +504,6 @@ const music = {
   },
   get playing() {
     return bus !== null;
-  },
-  get beatError() {
-    return lastBeatError;
-  },
-  /**
-   * Beat lock: a tile went at audio time `t`, so a beat (quarter note) should fall there. Moves the
-   * scheduler's grid by half the phase error (ignoring jitter under 8 ms), so the kick lands on the tiles.
-   */
-  alignBeat(t) {
-    if (!bus) return;
-    const sd = stepDur(TRACKS[current]);
-    const beat = sd * 4;
-    const toBeat = (4 - step % 4) % 4;
-    const nextBeat = nextTime + toBeat * sd;
-    let e = (t - nextBeat) % beat;
-    if (e > beat / 2) e -= beat;
-    if (e < -beat / 2) e += beat;
-    lastBeatError = e;
-    if (Math.abs(e) < 8e-3) return;
-    nextTime += Math.abs(e) > 0.1 ? e : e / 2;
-    if (nextTime < bus.ctx.currentTime + 0.01) nextTime += beat;
   }
 };
 
