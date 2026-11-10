@@ -73,6 +73,7 @@ const client = new GameClient(makeTransport);
 (window as unknown as { __p3engine: () => string }).__p3engine = () => client.state.transport;
 (window as unknown as { __p3session: () => unknown }).__p3session = () => client.state.session;
 (window as unknown as { __p3round: () => string }).__p3round = () => client.state.round?.roundId ?? '';
+(window as unknown as { __p3audio: () => unknown }).__p3audio = () => ({ ctx: sound.context?.state ?? null, music: music.playing });
 void sessionProvider.start(launch).then(
   (session) => {
     currency = session.currency;
@@ -462,7 +463,7 @@ const musicPref = {
     }
   },
 };
-let musicTrack: MusicTrack = musicPref.get() ?? 'a';
+let musicTrack: MusicTrack = musicPref.get() ?? 'c';
 
 function MusicControl() {
   const [on, setOn] = useState(music.playing || musicPref.get() !== null);
@@ -492,13 +493,15 @@ function MusicControl() {
           <span className="knob" />
         </span>
       </button>
-      <div className="music-tracks" role="radiogroup" aria-label="Music track">
-        {MUSIC_TRACKS.map((t) => (
-          <button key={t.id} role="radio" aria-checked={track === t.id} className={`music-track ${track === t.id ? 'on' : ''}`} onClick={() => pick(t.id)}>
-            {t.name}
-          </button>
-        ))}
-      </div>
+      {on && (
+        <div className="music-tracks" role="radiogroup" aria-label="Music track">
+          {MUSIC_TRACKS.map((t) => (
+            <button key={t.id} role="radio" aria-checked={track === t.id} className={`music-track ${track === t.id ? 'on' : ''}`} onClick={() => pick(t.id)}>
+              {t.name}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -556,8 +559,6 @@ function InfoModal({ page, s, sym, onClose, onOpenRound }: { page: InfoPage; s: 
             </dd>
             <dt>Top multiplier</dt>
             <dd>{formatMultiplier(TOP_MULTIPLIER)}</dd>
-            <dt>Tile lock</dt>
-            <dd>{cfg.tileCapPct}% of the round's bets</dd>
           </dl>
         )}
         {page === 'myBets' && (
@@ -819,6 +820,8 @@ function Board({
   const standing = new Set(tail);
   const goneAt = (t: number) => (ended && tail.length ? !standing.has(t) : r.gone[t]);
   const isWinner = (t: number) => ended && standing.has(t);
+  // CHANGES_11 P1: "FULL" for 3 s after a rejected move, or until a spot frees up.
+  const isFull = (t: number, count: number) => s.fullTile?.tile === t && Date.now() - s.fullTile.at < 3_000 && count >= caps.tileCap && r.phase !== 'betting';
 
   const onTile = (t: number) => {
     // Not in the game (no bet, cashed out or lost): point at the bet section.
@@ -868,8 +871,10 @@ function Board({
             }`}
           >
             {mine && <span className="you-badge">ME</span>}
+            {!mine && isFull(t, count) && <span className="you-badge full-badge">FULL</span>}
             {pickedTile === t && <span className="tag-bet">Bet</span>}
-            <span className="tile-count">{gone ? '×' : count}</span>
+            {/* CHANGES_11 P2: the framed tile hides its count before the bet (it could read as an amount) */}
+            {pickedTile !== t && <span className="tile-count">{gone ? '×' : count}</span>}
             {pickedTile === t && <span className="tag-now">Now</span>}
           </button>
         );
@@ -1016,7 +1021,9 @@ function BetSection({
       <div className="amount-row">
         <div className="amount-group">
           <button className="step" aria-label="Decrease bet" {...minus}>
-            −
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden>
+              <rect x="2" y="7" width="12" height="2" rx="1" fill="currentColor" />
+            </svg>
           </button>
           <input className="amount" inputMode="decimal" aria-label={`Bet amount in ${cur}`} value={amount}
             onChange={(e) => {
@@ -1027,7 +1034,10 @@ function BetSection({
             onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
           />
           <button className="step" aria-label="Increase bet" {...plus}>
-            +
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden>
+              <rect x="2" y="7" width="12" height="2" rx="1" fill="currentColor" />
+              <rect x="7" y="2" width="2" height="12" rx="1" fill="currentColor" />
+            </svg>
           </button>
         </div>
         {[1, 2, 5, 10].map((v) => (

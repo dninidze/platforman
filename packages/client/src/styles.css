@@ -1,10 +1,3 @@
-@font-face {
-  font-family: Montserrat;
-  font-style: normal;
-  font-weight: 100 900;
-  font-display: swap;
-  src: url('./assets/montserrat-latin.woff2') format('woff2');
-}
 /* Last Tile Standing — CHANGES_3 §5 + CHANGES_4 §4: graphite theme, traffic-light tiles, metal stage frames. */
 :root {
   --bg: #0d0e10;
@@ -2071,4 +2064,62 @@ html.locked body {
   border-color: #6b6f76;
   background: var(--panel-2);
   color: var(--text);
+}
+
+/* ======================================================================================
+   CHANGES_11
+   ====================================================================================== */
+/* N2 the watermark uses the game font, with a soft dark edge instead of a stroke */
+.betnow {
+  font-family: Montserrat, ui-sans-serif, system-ui, sans-serif;
+  font-weight: 800;
+  -webkit-text-stroke: 0;
+  color: rgba(255, 255, 255, 0.3);
+  text-shadow:
+    0 0 2px rgba(0, 0, 0, 0.55),
+    0 2px 14px rgba(0, 0, 0, 0.35);
+}
+/* O1 stay inside the board: clip, and narrow the letters where needed (set in --bn-sx by layout) */
+.board-wrap {
+  overflow: hidden;
+}
+.betnow span {
+  transform: translateY(-57%) scaleX(var(--bn-sx, 1));
+}
+/* P3 "Bet" / "Now" and "ME" / "FULL" in the tile numbers' outlined style */
+.tag-bet,
+.tag-now,
+.you-badge {
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  font-weight: 900;
+  color: transparent;
+  -webkit-text-stroke: 0.8px #000;
+  letter-spacing: 0.05em;
+}
+.tag-bet,
+.tag-now {
+  font-size: clamp(0.5rem, 1.6vw, 0.78rem);
+}
+.tag-bet {
+  top: 16%;
+}
+.tag-now {
+  bottom: 16%;
+}
+/* O2 matching − / + icons */
+.amount-group .step {
+  display: grid;
+  place-items: center;
+}
+.betnow {
+  --bn-sx: 0.76; /* measured: "NOW" in Montserrat 800 at 40cqw is ~114% of the board width; 0.8 leaves ~8% margin */
+}
+.betnow span {
+  transform: translateY(-51%) scaleX(var(--bn-sx, 1)); /* Montserrat caps sit higher in the line box than the system font's */
+}
+.betnow span {
+  display: flex;
+  justify-content: center; /* centre even while wider than the board, before the horizontal squeeze */
+  white-space: nowrap;
+  padding-left: 0.06em; /* balance the letter-spacing after the last letter */
 }

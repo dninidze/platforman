@@ -13,9 +13,10 @@
 export type MusicTrack = 'a' | 'b' | 'c';
 
 export const MUSIC_TRACKS: { id: MusicTrack; name: string }[] = [
+  // CHANGES_11 M3: Glasshouse first and the default.
+  { id: 'c', name: 'Glasshouse' },
   { id: 'a', name: 'Velvet Hours' },
   { id: 'b', name: 'Undertow' },
-  { id: 'c', name: 'Glasshouse' },
 ];
 
 /* ------------------------------------------------------------------ patterns */
@@ -224,6 +225,14 @@ function cleanup(src: AudioScheduledSourceNode, nodes: AudioNode[]): void {
   };
 }
 
+/**
+ * CHANGES_11 M1: light mode for phones and tablets (coarse pointer, or ?lite=1): no sustained pad layer and no
+ * echo sends, which roughly halves the audio work. Desktop keeps the full arrangement.
+ */
+const LITE =
+  typeof window !== 'undefined' &&
+  ((typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches) || /[?&]lite=1/.test(window.location.search));
+
 /* ------------------------------------------------------------------ instruments */
 
 function tone(b: Bus, t: number, midi: number, dur: number, s: Synth): void {
@@ -240,18 +249,19 @@ function tone(b: Bus, t: number, midi: number, dur: number, s: Synth): void {
   g.gain.setTargetAtTime(s.gain * s.sustain, t + s.attack, s.decay);
   const off = Math.max(t + s.attack, t + dur);
   g.gain.setTargetAtTime(0, off, s.release);
-  const end = off + s.release * 6;
+  const end = off + s.release * 4; // CHANGES_11 M1: shorter tails (inaudible below -35 dB)
   filt.connect(g);
   g.connect(b.mix);
   const nodes: AudioNode[] = [filt, g];
-  if (s.send > 0) {
+  if (s.send > 0 && !LITE) {
     const sg = ctx.createGain();
     sg.gain.value = s.send;
     g.connect(sg);
     sg.connect(b.send);
     nodes.push(sg);
   }
-  const spreads = s.detune > 0 ? [-s.detune, s.detune] : [0];
+  // CHANGES_11 M1: one oscillator per voice (the detuned second oscillator doubled the cost); a light detune keeps some width.
+  const spreads = [s.detune > 0 ? s.detune / 2 : 0];
   let last: OscillatorNode | null = null;
   for (const c of spreads) {
     const o = ctx.createOscillator();
@@ -428,7 +438,7 @@ function scheduleStep(b: Bus, def: TrackDef, s: number, t0: number): void {
   }
 
   // Pad: one long chord per 2-bar slot.
-  if (def.pad && two === 0) {
+  if (def.pad && two === 0 && !LITE) {
     for (const n of chord) tone(b, t, n, sd * 30, def.pad);
   }
 

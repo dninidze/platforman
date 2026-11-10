@@ -108,6 +108,8 @@ export interface GameState {
   lostAt: number | null;
   /** CHANGES_10 C1: when this player cashed out (client time). */
   cashedAt: number | null;
+  /** CHANGES_11 P1: a tile a move was rejected from as full (client time). */
+  fullTile: { tile: number; at: number } | null;
   toasts: Toast[];
   /** CHANGES_9 B5: a rejected action, shown on message line 1 for 3 s (client time). */
   notice: { text: string; at: number } | null;
@@ -160,6 +162,7 @@ const initial: GameState = {
   lastGone: null,
   lostAt: null,
   cashedAt: null,
+  fullTile: null,
   toasts: [],
   notice: null,
   offset: 0,
@@ -277,7 +280,10 @@ export class GameClient {
   cancelBet() {
     this.send({ t: 'cancelBet', rid: ++this.rid });
   }
+  /** CHANGES_11 P1: the tile of the last move request, to flag it "FULL" if it is rejected. */
+  private moveTile: number | null = null;
   move(tileId: number) {
+    this.moveTile = tileId;
     this.send({ t: 'move', tileId, rid: ++this.rid });
   }
   cashout() {
@@ -473,6 +479,7 @@ export class GameClient {
         if (!m.ok) this.notify(reasonText(m.reason));
         return;
       case 'moveResult':
+        if (!m.ok && m.reason === 'TILE_FULL' && this.moveTile !== null) this.set({ fullTile: { tile: this.moveTile, at: Date.now() } });
         if (!m.ok) this.notify(reasonText(m.reason));
         // The server confirmed the move; reflect the new tile without waiting for another 'you'.
         else if (s.you && m.tileId !== undefined) this.set({ you: { ...s.you, tileId: m.tileId } });
