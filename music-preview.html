@@ -26,7 +26,7 @@
 <body>
 <main>
   <h1>Platforman background music</h1>
-  <p>Three original loops, synthesized live (Web Audio, no files). 120 BPM, 16-bar cycle with a filter sweep and fill. Glasshouse is the game default. Phones and tablets play a lighter mix (no pad layer, no echo); add <code>?lite=1</code> to this page's address to hear it here. In-game level is fixed low; the boost below is for auditioning only.</p>
+  <p>Three original loops, synthesized live (Web Audio, no files). 100 BPM, 16-bar cycle with a filter sweep and fill. Glasshouse is the game default. Phones and tablets play a lighter mix (no pad layer, no echo); add <code>?lite=1</code> to this page's address to hear it here. In-game level is fixed low; the boost below is for auditioning only.</p>
   <div id="list"></div>
   <label>Preview boost <input id="vol" type="range" min="1" max="6" step="0.1" value="3"></label>
 </main>
@@ -43,7 +43,7 @@ const MUSIC_TRACKS = [
 const TRACKS = {
   // Warm swung chord stabs in D minor over a round bass, soft pad underneath.
   a: {
-    bpm: 120,
+    bpm: 100,
     swing: 0.14,
     kick: "x...x...x...x...",
     hat: "..o...o...o...o.",
@@ -85,7 +85,7 @@ const TRACKS = {
   },
   // Darker C minor: rolling 16th saw bass, rimshots, a sparse resonant stab and a low pad.
   b: {
-    bpm: 120,
+    bpm: 100,
     swing: 0.08,
     kick: "x...x...x...x...",
     hat: "..c...c...c...c...c...c...c.c.o.",
@@ -127,7 +127,7 @@ const TRACKS = {
   },
   // Light E major / C# minor: dotted pluck arpeggio with echo, soft sine sub, airy pad.
   c: {
-    bpm: 120,
+    bpm: 100,
     swing: 0.12,
     kick: "x...x...x...x...",
     hat: "..c...c...c...c...c..cc...c...o.",

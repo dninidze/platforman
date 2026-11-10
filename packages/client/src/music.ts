@@ -1,5 +1,5 @@
 /**
- * Background music: three original minimal / deep-house loops (120 BPM), synthesized live with the
+ * Background music: three original minimal / deep-house loops (~100 BPM), synthesized live with the
  * Web Audio API (no files, no network). Kept low in the mix, under the game sounds.
  *
  * Usage: music.start(ctx, 'a') from (or after) a user gesture, with the AudioContext owned by sound.ts.
@@ -69,7 +69,7 @@ interface TrackDef {
 const TRACKS: Record<MusicTrack, TrackDef> = {
   // Warm swung chord stabs in D minor over a round bass, soft pad underneath.
   a: {
-    bpm: 120,
+    bpm: 100,
     swing: 0.14,
     kick: 'x...x...x...x...',
     hat: '..o...o...o...o.',
@@ -103,7 +103,7 @@ const TRACKS: Record<MusicTrack, TrackDef> = {
   },
   // Darker C minor: rolling 16th saw bass, rimshots, a sparse resonant stab and a low pad.
   b: {
-    bpm: 120,
+    bpm: 100,
     swing: 0.08,
     kick: 'x...x...x...x...',
     hat: '..c...c...c...c...c...c...c.c.o.',
@@ -137,7 +137,7 @@ const TRACKS: Record<MusicTrack, TrackDef> = {
   },
   // Light E major / C# minor: dotted pluck arpeggio with echo, soft sine sub, airy pad.
   c: {
-    bpm: 120,
+    bpm: 100,
     swing: 0.12,
     kick: 'x...x...x...x...',
     hat: '..c...c...c...c...c..cc...c...o.',
