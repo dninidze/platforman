@@ -110,6 +110,8 @@ export interface GameState {
   cashedAt: number | null;
   /** CHANGES_11 P1: a tile a move was rejected from as full (client time). */
   fullTile: { tile: number; at: number } | null;
+  /** performance.now() when the last normal-speed tile tick arrived (music beat lock). */
+  lastTickAt: number | null;
   toasts: Toast[];
   /** CHANGES_9 B5: a rejected action, shown on message line 1 for 3 s (client time). */
   notice: { text: string; at: number } | null;
@@ -163,6 +165,7 @@ const initial: GameState = {
   lostAt: null,
   cashedAt: null,
   fullTile: null,
+  lastTickAt: null,
   toasts: [],
   notice: null,
   offset: 0,
@@ -403,6 +406,7 @@ export class GameClient {
         const mine = s.you && s.you.roundId === m.roundId && s.you.state === 'alive' && s.you.tileId === m.tileGone;
         this.set({
           offset: m.serverTime - Date.now(),
+          ...(m.fast ? {} : { lastTickAt: performance.now() }),
           round: {
             ...r,
             phase: 'running',

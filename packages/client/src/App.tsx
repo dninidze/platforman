@@ -73,7 +73,7 @@ const client = new GameClient(makeTransport);
 (window as unknown as { __p3engine: () => string }).__p3engine = () => client.state.transport;
 (window as unknown as { __p3session: () => unknown }).__p3session = () => client.state.session;
 (window as unknown as { __p3round: () => string }).__p3round = () => client.state.round?.roundId ?? '';
-(window as unknown as { __p3audio: () => unknown }).__p3audio = () => ({ ctx: sound.context?.state ?? null, music: music.playing });
+(window as unknown as { __p3audio: () => unknown }).__p3audio = () => ({ ctx: sound.context?.state ?? null, music: music.playing, beatErrorMs: music.beatError === null ? null : Math.round(music.beatError * 1000) });
 void sessionProvider.start(launch).then(
   (session) => {
     currency = session.currency;
@@ -201,6 +201,13 @@ export function App() {
       document.removeEventListener('visibilitychange', onVisible);
     };
   }, []);
+  // Music beat lock: each tile that goes is a beat (tiles every 0.5 s = 120 BPM).
+  useEffect(() => {
+    const ctx = sound.context;
+    if (s.lastTickAt === null || !ctx || !music.playing) return;
+    const latency = (ctx.outputLatency || 0) + (ctx.baseLatency || 0);
+    music.alignBeat(ctx.currentTime - (performance.now() - s.lastTickAt) / 1000 - latency + 0.016);
+  }, [s.lastTickAt]);
   // CHANGES_9 J1: on narrow screens the page is fixed until a side section is opened; scrolling back to the top closes it.
   useEffect(() => {
     const narrow = () => window.matchMedia('(max-width: 1099px)').matches;

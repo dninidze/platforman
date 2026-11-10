@@ -1,5 +1,5 @@
 /**
- * Background music: three original minimal / deep-house loops (~100 BPM), synthesized live with the
+ * Background music: three original minimal / deep-house loops (120 BPM, beat-locked to the tiles), synthesized live with the
  * Web Audio API (no files, no network). Kept low in the mix, under the game sounds.
  *
  * Usage: music.start(ctx, 'a') from (or after) a user gesture, with the AudioContext owned by sound.ts.
@@ -69,7 +69,7 @@ interface TrackDef {
 const TRACKS: Record<MusicTrack, TrackDef> = {
   // Warm swung chord stabs in D minor over a round bass, soft pad underneath.
   a: {
-    bpm: 100,
+    bpm: 120, // one beat per tile (tiles go every 0.5 s)
     swing: 0.14,
     kick: 'x...x...x...x...',
     hat: '..o...o...o...o.',
@@ -103,7 +103,7 @@ const TRACKS: Record<MusicTrack, TrackDef> = {
   },
   // Darker C minor: rolling 16th saw bass, rimshots, a sparse resonant stab and a low pad.
   b: {
-    bpm: 100,
+    bpm: 120, // one beat per tile (tiles go every 0.5 s)
     swing: 0.08,
     kick: 'x...x...x...x...',
     hat: '..c...c...c...c...c...c...c.c.o.',
@@ -137,7 +137,7 @@ const TRACKS: Record<MusicTrack, TrackDef> = {
   },
   // Light E major / C# minor: dotted pluck arpeggio with echo, soft sine sub, airy pad.
   c: {
-    bpm: 100,
+    bpm: 120, // one beat per tile (tiles go every 0.5 s)
     swing: 0.12,
     kick: 'x...x...x...x...',
     hat: '..c...c...c...c...c..cc...c...o.',
@@ -527,6 +527,9 @@ function teardown(): void {
   }, 700);
 }
 
+/** Last measured beat phase error in seconds (debug / checks). */
+let lastBeatError: number | null = null;
+
 export const music = {
   /** Start (or switch to) a track on the caller's AudioContext; fades in over 1 s. */
   start(ctx: AudioContext, track: MusicTrack): void {
@@ -563,5 +566,26 @@ export const music = {
   },
   get playing(): boolean {
     return bus !== null;
+  },
+  get beatError(): number | null {
+    return lastBeatError;
+  },
+  /**
+   * Beat lock: a tile went at audio time `t`, so a beat (quarter note) should fall there. Moves the
+   * scheduler's grid by half the phase error (ignoring jitter under 8 ms), so the kick lands on the tiles.
+   */
+  alignBeat(t: number): void {
+    if (!bus) return;
+    const sd = stepDur(TRACKS[current]);
+    const beat = sd * 4;
+    const toBeat = (4 - (step % 4)) % 4;
+    const nextBeat = nextTime + toBeat * sd;
+    let e = (t - nextBeat) % beat;
+    if (e > beat / 2) e -= beat;
+    if (e < -beat / 2) e += beat;
+    lastBeatError = e;
+    if (Math.abs(e) < 0.008) return;
+    nextTime += Math.abs(e) > 0.1 ? e : e / 2;
+    if (nextTime < bus.ctx.currentTime + 0.01) nextTime += beat;
   },
 };
