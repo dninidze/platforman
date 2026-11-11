@@ -79,14 +79,14 @@ check('amount box: − amount + joined, number only (semibold), no currency', am
 await b.evaluate(`(() => { const t = [...document.querySelectorAll('.board .tile')].find((x) => !x.disabled && !x.classList.contains('picked')); t.click(); return true; })()`);
 await sleep(200);
 const yours = await b.evaluate(line1);
-check('tapping another tile: Bet/Now moves with the frame; line 1 "Tap the tile again to bet"', yours === 'Tap the tile again to bet' && (await b.evaluate(`[...document.querySelectorAll('.tile.picked .tag-bet, .tile.picked .tag-now')].map((t) => t.textContent).join('/')`)) === 'Bet/Now' && auto.tags === 'Bet/Now', yours);
+check('tapping another tile: BET/NOW moves with the frame; line 1 "Tap the tile again to bet"', yours === 'Tap the tile again to bet' && (await b.evaluate(`[...document.querySelectorAll('.tile.picked .tag-bet, .tile.picked .tag-now')].map((t) => t.textContent).join('/')`)) === 'BET/NOW' && auto.tags === 'BET/NOW', yours);
 await b.evaluate(`document.querySelector('.tile.picked').click(), true`); // CHANGES_9 B3: tap the framed tile again to bet
 await b.waitFor(`/^Cancel bet \\d+\\.\\d\\d [A-Z]{3}$/.test(${mainBtn}.textContent) && ${mainBtn}.className.includes('mb-red')`, 5_000, 'bet accepted');
 const frame = await b.evaluate(`({ cls: document.querySelector('.tile.mine')?.className, badge: document.querySelector('.tile.mine .you-badge')?.textContent })`);
 check('second tap on the framed tile bets: red "Cancel bet …", own tile framed bronze and labelled ME', /metal-bronze/.test(frame.cls ?? '') && frame.badge === 'ME', `${frame.cls} / ${frame.badge}`);
 check('BET NOW watermark disappears once the bet is placed', await b.evaluate(`!document.querySelector('.betnow')`));
-await b.waitFor(`/^Tiles\\s+\\d+ \\/ \\d+$/.test(${line2})`, 15_000, 'running');
-check('tile counter counts up: "Tiles n / 91" (fixed-width digits)', /^Tiles\s+\d+ \/ 91$/.test(await b.evaluate(line2)), await b.evaluate(line2));
+await b.waitFor(`/^Tiles\\s+\\d+\\s\\/\\s\\d+$/.test(${line2})`, 15_000, 'running');
+check('tile counter counts up: "Tiles n / 91" (fixed-width digits)', /^Tiles\s+\d+\s\/\s91$/.test(await b.evaluate(line2)), await b.evaluate(line2));
 await b.waitFor(`(() => { const x = ${mainBtn}; if (/^Cash out \\d/.test(x.textContent) && !x.disabled) { window.__cashText = x.textContent; window.__cashCls = x.className; x.click(); return true; } return /^Bet /.test(x.textContent); })()`, 15_000, 'cashout or loss');
 await sleep(800);
 const cash = await b.evaluate(`({ text: window.__cashText ?? null, cls: window.__cashCls ?? null, after: ${mainBtn}.textContent, line1: ${line1}, me: [...(document.querySelector('.lbtable tr.me')?.children ?? [])].map((td) => td.textContent) })`);
@@ -101,6 +101,14 @@ check('live bets show only masked names', lb.nicks.length > 1 && masked, lb.nick
 check('own row in its normal place, with my full name and "(Me)"', lb.nicks.includes(`${name1} (Me)`) && cash.me.length === 5 && cash.me[0] === `${name1} (Me)`, outcome);
 check('side sections titled "Live bets" and "History"', (await b.evaluate(`[...document.querySelectorAll('.left-col h2, .right-col h2')].map((h) => h.textContent).join('|')`)) === 'Live bets|History');
 if (cash.text) check('own row after cashing out: green row, tiles survived, x and Win filled', /^\d+$/.test(cash.me[2]) && /x$/.test(cash.me[3]) && cash.me[4] !== '' && (await b.evaluate(`document.querySelector('.lbtable tr.me').className`)).includes('st-cashedOut'), outcome);
+if (cash.text) {
+  // CHANGES_12 V1: the My bets row is there right after the cash-out, while the round is still running.
+  await menuItem('My bets');
+  await sleep(200);
+  const mb = await b.evaluate(`({ rows: [...document.querySelectorAll('.modal .rounds tbody tr')].map((tr) => tr.textContent), running: !/Next round/.test((document.querySelectorAll('.msgbox .msg-line')[1]?.textContent || '')) })`);
+  await b.evaluate(`document.querySelector('.modal-head button').click(), true`);
+  check('My bets shows the cash-out at once, before the round ends', mb.running && mb.rows.length === 1 && /x/.test(mb.rows[0]), mb.rows.join(' | '));
+}
 const tiles = await b.evaluate(`({ bands: [...new Set([...document.querySelectorAll('.board .tile')].map((t) => [...t.classList].find((c) => c.startsWith('band-'))))], gone: [...new Set([...document.querySelectorAll('.board .tile.band-gone .tile-count')].map((x) => x.textContent))] })`);
 check('tiles carry traffic-light bands; gone tiles show only ×', tiles.bands.every((x) => /^band-(green|yellow|full|gone)$/.test(x)) && tiles.gone.join('') === '×', `${tiles.bands.join(',')} / ${tiles.gone.join('')}`);
 await b.waitFor(`/Next round in/.test(${line2})`, 300_000, 'round end');

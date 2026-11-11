@@ -173,7 +173,8 @@ export function App() {
   const lastAliveX = useRef(0);
   if (you?.state === 'alive' && r && you.roundId === r.roundId) lastAliveX.current = r.stage === 1 && r.removed === 0 ? 0 : r.multiplier;
   useEffect(() => {
-    if (!you || !r || you.roundId !== r.roundId || r.phase !== 'ended' || you.state === 'idle' || you.state === 'betting') return;
+    // CHANGES_12 V1: add the row the moment the bet settles (cash-out or crash), not at round end.
+    if (!you || !r || you.roundId !== r.roundId || (you.state !== 'cashedOut' && you.state !== 'lost')) return;
     const reach = you.state === 'cashedOut' ? (you.multiplier ?? 0) : you.state === 'lost' ? lastAliveX.current : r.multiplier;
     myBets.record({ roundId: you.roundId, bet: you.bet, state: you.state, multiplier: you.multiplier, payout: you.payout, reach });
   }, [you, r?.phase, r?.roundId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -668,7 +669,8 @@ function gameLine(s: GameState, now: number): string {
   // CHANGES_9 D1: counts up, per stage.
   const len = STAGE_REMOVALS[r.stage - 1];
   // CHANGES_10 C2: fixed-width digits (figure spaces pad the count).
-  return `Tiles ${String(r.removed).padStart(String(len).length, '\u2007')} / ${len}`;
+  // CHANGES_12 U3: thin spaces around "/" (closer), figure-space padding keeps the width fixed.
+  return `Tiles ${String(r.removed).padStart(String(len).length, '\u2007')}\u2009/\u2009${len}`;
 }
 
 /** Message line 1 (CHANGES_7 §6): the player's messages, else game events (resurrection, round result). */
@@ -872,10 +874,10 @@ function Board({
           >
             {mine && <span className="you-badge">ME</span>}
             {!mine && isFull(t, count) && <span className="you-badge full-badge">FULL</span>}
-            {pickedTile === t && <span className="tag-bet">Bet</span>}
+            {pickedTile === t && <span className="tag-bet">BET</span>}
             {/* CHANGES_11 P2: the framed tile hides its count before the bet (it could read as an amount) */}
             {pickedTile !== t && <span className="tile-count">{gone ? '×' : count}</span>}
-            {pickedTile === t && <span className="tag-now">Now</span>}
+            {pickedTile === t && <span className="tag-now">NOW</span>}
           </button>
         );
       })}

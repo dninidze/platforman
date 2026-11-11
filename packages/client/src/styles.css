@@ -230,7 +230,7 @@ code {
 .mult {
   font-size: clamp(2.2rem, 6vw, 3.2rem);
   line-height: 1.05;
-  font-weight: 900;
+  font-weight: 800;
   font-variant-numeric: tabular-nums;
   min-width: 5ch;
   background: linear-gradient(180deg, var(--m1), var(--m2) 85%);
@@ -296,7 +296,7 @@ code {
 /* numbers: bold, black outline, transparent fill (tile colour shows through) */
 .tile-count {
   position: relative;
-  font-weight: 900;
+  font-weight: 800;
   font-size: clamp(0.72rem, 2.3vw, 1.08rem);
   font-variant-numeric: tabular-nums;
   color: #111;
@@ -337,7 +337,7 @@ code {
   left: 50%;
   transform: translateX(-50%);
   font-size: 0.5rem;
-  font-weight: 900;
+  font-weight: 800;
   letter-spacing: 0.06em;
   color: #000;
   z-index: 1;
@@ -994,7 +994,7 @@ code {
 /* white text with a black contour on every CTA colour (distinguishes buttons from tiles) */
 .mainbtn .cta {
   color: #fff;
-  font-weight: 900;
+  font-weight: 800;
   font-size: 1.05rem;
   line-height: 1.2;
   text-shadow:
@@ -1619,7 +1619,7 @@ code {
   align-items: center;
   justify-content: center;
   line-height: 0.9;
-  font-weight: 900;
+  font-weight: 800;
   font-size: clamp(3.5rem, 17vw, 8.5rem);
   letter-spacing: 0.06em;
   color: rgba(255, 255, 255, 0.28);
@@ -2091,7 +2091,7 @@ html.locked body {
 .tag-now,
 .you-badge {
   font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
-  font-weight: 900;
+  font-weight: 800;
   color: transparent;
   -webkit-text-stroke: 0.8px #000;
   letter-spacing: 0.05em;
@@ -2122,4 +2122,66 @@ html.locked body {
   justify-content: center; /* centre even while wider than the board, before the horizontal squeeze */
   white-space: nowrap;
   padding-left: 0.06em; /* balance the letter-spacing after the last letter */
+}
+
+/* ======================================================================================
+   CHANGES_12 (Zaal, 11 Nov): one font, as in Dicador. Montserrat everywhere, weights 400-800.
+   ====================================================================================== */
+/* T1 tile numbers, BET / NOW tag, ME / FULL: Montserrat 800. The black outline is drawn with text shadows
+   (a stroke on this variable font shows the glyphs' inner overlaps); the fill is a light tint of the tile. */
+.tile-count,
+.tag-bet,
+.tag-now,
+.you-badge,
+.betnow {
+  font-family: Montserrat, ui-sans-serif, system-ui, sans-serif;
+  font-weight: 800;
+  -webkit-text-stroke: 0;
+}
+.tile-count {
+  color: color-mix(in srgb, var(--tc) 70%, white 30%);
+  text-shadow:
+    -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000,
+    0 -1.2px 0 #000, 0 1.2px 0 #000, -1.2px 0 0 #000, 1.2px 0 0 #000;
+  letter-spacing: 0.02em;
+}
+.tile.band-gone .tile-count {
+  text-shadow: none;
+}
+.tag-bet,
+.tag-now,
+.you-badge {
+  color: color-mix(in srgb, var(--tc) 70%, white 30%);
+  text-shadow:
+    -0.7px -0.7px 0 #000, 0.7px -0.7px 0 #000, -0.7px 0.7px 0 #000, 0.7px 0.7px 0 #000,
+    0 -0.8px 0 #000, 0 0.8px 0 #000, -0.8px 0 0 #000, 0.8px 0 0 #000;
+  letter-spacing: 0.06em;
+}
+/* U1 a much lighter watermark: the tiles stay visible underneath */
+.betnow {
+  color: rgba(255, 255, 255, 0.12);
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.18);
+  animation: none;
+}
+/* T2 "-" and "+" identical: same width, icon, colour and a divider on the amount side; never clipped */
+.amount-group {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) minmax(0, 1fr);
+}
+.amount-group .step {
+  min-width: 0;
+  border: 0;
+}
+.amount-group .step:first-child {
+  border-right: 1px solid #4a4d53;
+}
+.amount-group .step:last-child {
+  border-left: 1px solid #4a4d53;
+}
+.betbox .amount-row .amount-group input.amount {
+  border: 0;
+}
+@media (max-width: 1099px) {
+  .betbox .amount-row {
+    grid-template-columns: minmax(0, 2.8fr) repeat(4, minmax(0, 1fr));
+  }
 }
