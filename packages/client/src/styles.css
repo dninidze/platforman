@@ -2185,3 +2185,89 @@ html.locked body {
     grid-template-columns: minmax(0, 2.8fr) repeat(4, minmax(0, 1fr));
   }
 }
+
+/* ======================================================================================
+   CHANGES_13 (Zaal, 11 Nov 16:18)
+   ====================================================================================== */
+/* 1. History spaced like Live bets: same panel padding, text size and row spacing */
+.rounds-panel {
+  padding: 10px 12px;
+}
+.rounds {
+  font-size: 0.76rem;
+}
+.rounds td {
+  padding: 7px 6px 7px 2px;
+  line-height: 1.35;
+}
+.rounds th {
+  padding: 4px 6px 6px 2px;
+}
+.rounds .mult-cell {
+  font-weight: 600;
+}
+.rounds .sub {
+  margin-top: 2px;
+}
+/* 1. sort buttons: no fill when selected; only the triangle turns yellow */
+.sortbtn,
+.sortbtn.on {
+  background: transparent;
+  border: 1px solid #4a4d53;
+  color: var(--muted);
+  font-weight: 600;
+}
+.sortbtn span {
+  color: var(--muted);
+}
+.sortbtn.on {
+  color: var(--text);
+}
+.sortbtn.on span {
+  color: var(--t-yellow);
+}
+/* 3. no divider lines inside the - amount + box */
+.amount-group .step:first-child,
+.amount-group .step:last-child {
+  border: 0;
+}
+/* 4. main button text semibold */
+.mainbtn .cta {
+  font-weight: 600;
+}
+/* 5. no visible scrollbars in the side sections (still scrollable by wheel, touch and keyboard) */
+.tablewrap,
+.left-col > .panel,
+.right-col > .panel {
+  scrollbar-width: none;
+}
+.tablewrap::-webkit-scrollbar,
+.left-col > .panel::-webkit-scrollbar,
+.right-col > .panel::-webkit-scrollbar {
+  display: none;
+}
+/* David, 12 Nov: the watermark as transparent white (visible, but the tiles show through); no dark edge */
+.betnow {
+  color: rgba(255, 255, 255, 0.26);
+  text-shadow: none;
+}
+/* David, 12 Nov: the message box frame lights yellow while the cash-out message shows */
+.msgbox.cashed {
+  border-color: var(--t-yellow);
+  box-shadow:
+    0 0 0 1px var(--t-yellow),
+    0 0 14px 2px rgba(249, 210, 28, 0.45);
+  animation: cashed-glow 1.2s ease-out;
+}
+@keyframes cashed-glow {
+  0% {
+    box-shadow:
+      0 0 0 2px var(--t-yellow),
+      0 0 26px 6px rgba(249, 210, 28, 0.8);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .msgbox.cashed {
+    animation: none;
+  }
+}

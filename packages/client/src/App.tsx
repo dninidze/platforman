@@ -668,9 +668,10 @@ function gameLine(s: GameState, now: number): string {
   if (r.phase === 'ended') return `Next round in ${secs} s`;
   // CHANGES_9 D1: counts up, per stage.
   const len = STAGE_REMOVALS[r.stage - 1];
-  // CHANGES_10 C2: fixed-width digits (figure spaces pad the count).
-  // CHANGES_12 U3: thin spaces around "/" (closer), figure-space padding keeps the width fixed.
-  return `Tiles ${String(r.removed).padStart(String(len).length, '\u2007')}\u2009/\u2009${len}`;
+  // CHANGES_13: the count sits right after "Tiles " and tight against "/"; the spare digit space (figure spaces,
+  // as wide as a digit and never collapsed) goes after the total, so the line never changes width.
+  const n = String(r.removed);
+  return `Tiles ${n}/${len}${'\u2007'.repeat(Math.max(0, String(len).length - n.length))}`;
 }
 
 /** Message line 1 (CHANGES_7 §6): the player's messages, else game events (resurrection, round result). */
@@ -732,7 +733,14 @@ function MultiplierSection({ s, pick, queued, nudge }: { s: GameState; pick: Pic
       <div className="mult" aria-live="polite" aria-atomic="true">
         <MultDigits text={formatMultiplier(notStarted ? 0 : r.multiplier)} />
       </div>
-      <div className={`msgbox ${nudge ? `nudge-${nudge % 2}` : ''}`} role="status" aria-live="polite">
+      <div
+        className={`msgbox ${nudge ? `nudge-${nudge % 2}` : ''} ${
+          // CHANGES_13: the frame lights yellow while the cash-out message shows (5 s), to mark the win.
+          s.you?.roundId === r.roundId && s.you.state === 'cashedOut' && s.cashedAt !== null && Date.now() - s.cashedAt < 5_000 ? 'cashed' : ''
+        }`}
+        role="status"
+        aria-live="polite"
+      >
         <Marquee text={top.text} />
         <Marquee text={game} />
       </div>
@@ -1213,7 +1221,7 @@ function RoundsPanel({ s, sym, top, onOpen }: { s: GameState; sym: string; top: 
               {isTop && <div className="sortrow">{sortBtn('reach', 'Reach')}</div>}
             </th>
             <th scope="col">
-              Top man
+              Top tile
               {isTop && <div className="sortrow">{sortBtn('man', 'x')}</div>}
             </th>
             <th scope="col">
